@@ -1,0 +1,74 @@
+<UserControl x:Class="ZayFlow.App.Views.FileIntelligenceView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <ScrollViewer Style="{StaticResource PremiumScrollViewer}" Padding="{StaticResource PagePadding}">
+        <StackPanel>
+            <StackPanel Margin="0,0,0,20">
+                <TextBlock Text="File Intelligence" Style="{StaticResource HeadingXL}" Margin="0,0,0,6"/>
+                <TextBlock Text="Upload TXT, PDF, DOCX, or CSV and analyze with AI." Style="{StaticResource BodyText}"/>
+            </StackPanel>
+
+            <Border Style="{StaticResource PremiumCard}" Margin="0,0,0,16">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBox Grid.Column="0" Style="{StaticResource PremiumTextBox}" Text="{Binding SelectedFilePath}" IsReadOnly="True"/>
+                    <Button Grid.Column="1" Margin="10,0,10,0" Style="{StaticResource SecondaryButton}" Content="Upload File" Command="{Binding BrowseFileCommand}"/>
+                    <Button Grid.Column="2" Style="{StaticResource PrimaryButton}" Content="Analyze" Command="{Binding AnalyzeFileCommand}"/>
+                </Grid>
+            </Border>
+
+            <Border Style="{StaticResource PremiumCard}" Margin="0,0,0,16">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel>
+                        <TextBlock Text="Require upload confirmation" FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryTextBrush}"/>
+                        <TextBlock Text="This file will be sent to the AI for analysis." FontSize="12" Foreground="{DynamicResource TertiaryTextBrush}"/>
+                    </StackPanel>
+                    <ToggleButton Grid.Column="1" Style="{StaticResource ToggleSwitch}" IsChecked="{Binding RequiresUploadConfirmation}"/>
+                </Grid>
+            </Border>
+
+            <Border Style="{StaticResource PremiumCard}" Margin="0,0,0,12">
+                <StackPanel>
+                    <TextBlock Text="Summary" Style="{StaticResource HeadingSM}" Margin="0,0,0,6"/>
+                    <TextBlock Text="{Binding Result.Summary}" TextWrapping="Wrap" Foreground="{DynamicResource PrimaryTextBrush}"/>
+                </StackPanel>
+            </Border>
+
+            <Border Style="{StaticResource PremiumCard}" Margin="0,0,0,12">
+                <StackPanel>
+                    <TextBlock Text="Key Points" Style="{StaticResource HeadingSM}" Margin="0,0,0,6"/>
+                    <TextBlock Text="{Binding Result.KeyPoints}" TextWrapping="Wrap" Foreground="{DynamicResource PrimaryTextBrush}"/>
+                </StackPanel>
+            </Border>
+
+            <Border Style="{StaticResource PremiumCard}" Margin="0,0,0,12">
+                <StackPanel>
+                    <TextBlock Text="Simplified Language" Style="{StaticResource HeadingSM}" Margin="0,0,0,6"/>
+                    <TextBlock Text="{Binding Result.SimplifiedVersion}" TextWrapping="Wrap" Foreground="{DynamicResource PrimaryTextBrush}"/>
+                </StackPanel>
+            </Border>
+
+            <Border Style="{StaticResource PremiumCard}" Margin="0,0,0,12">
+                <StackPanel>
+                    <TextBlock Text="Topic" Style="{StaticResource HeadingSM}" Margin="0,0,0,6"/>
+                    <TextBlock Text="{Binding Result.Topic}" TextWrapping="Wrap" Foreground="{DynamicResource PrimaryTextBrush}"/>
+                </StackPanel>
+            </Border>
+
+            <Border Style="{StaticResource PremiumCard}">
+                <StackPanel>
+                    <TextBlock Text="Notes" Style="{StaticResource HeadingSM}" Margin="0,0,0,6"/>
+                    <TextBlock Text="{Binding Result.Notes}" TextWrapping="Wrap" Foreground="{DynamicResource PrimaryTextBrush}"/>
+                </StackPanel>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

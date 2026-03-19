@@ -1,0 +1,73 @@
+<UserControl x:Class="ZayFlow.App.Views.InsightsView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <ScrollViewer Style="{StaticResource PremiumScrollViewer}" Padding="{StaticResource PagePadding}">
+        <StackPanel>
+            <StackPanel Margin="0,0,0,20">
+                <TextBlock Text="Insights" Style="{StaticResource HeadingXL}" Margin="0,0,0,6"/>
+                <TextBlock Text="Storage analytics, duplicate trends, and old file detection." Style="{StaticResource BodyText}"/>
+            </StackPanel>
+
+            <Border Style="{StaticResource PremiumCard}" Margin="0,0,0,16">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBox Grid.Column="0" Style="{StaticResource PremiumTextBox}" Text="{Binding ScanFolder, UpdateSourceTrigger=PropertyChanged}"/>
+                    <Button Grid.Column="1" Margin="10,0,10,0" Style="{StaticResource SecondaryButton}" Content="Browse" Command="{Binding BrowseFolderCommand}"/>
+                    <Button Grid.Column="2" Style="{StaticResource PrimaryButton}" Content="Refresh" Command="{Binding RefreshCommand}"/>
+                </Grid>
+            </Border>
+
+            <UniformGrid Columns="2" Margin="0,0,0,12">
+                <Border Style="{StaticResource PremiumCard}" Margin="0,0,8,0">
+                    <StackPanel>
+                        <TextBlock Text="Old files not accessed" Style="{StaticResource HeadingSM}"/>
+                        <TextBlock Text="{Binding OldFilesCount}" FontSize="28" FontWeight="Bold" Foreground="{DynamicResource PrimaryTextBrush}"/>
+                    </StackPanel>
+                </Border>
+                <Border Style="{StaticResource PremiumCard}" Margin="8,0,0,0">
+                    <StackPanel>
+                        <TextBlock Text="Duplicate file groups" Style="{StaticResource HeadingSM}"/>
+                        <TextBlock Text="{Binding DuplicateCount}" FontSize="28" FontWeight="Bold" Foreground="{DynamicResource PrimaryTextBrush}"/>
+                    </StackPanel>
+                </Border>
+            </UniformGrid>
+
+            <Border Style="{StaticResource PremiumCard}" Margin="0,0,0,12">
+                <StackPanel>
+                    <TextBlock Text="Most used folders" Style="{StaticResource HeadingSM}" Margin="0,0,0,6"/>
+                    <ItemsControl ItemsSource="{Binding MostUsedFolders}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Grid Margin="0,0,0,6">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="{Binding Folder}" Foreground="{DynamicResource SecondaryTextBrush}"/>
+                                    <TextBlock Grid.Column="1" Text="{Binding Count}" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryTextBrush}"/>
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </Border>
+
+            <Border Style="{StaticResource PremiumCard}">
+                <StackPanel>
+                    <TextBlock Text="Largest files" Style="{StaticResource HeadingSM}" Margin="0,0,0,6"/>
+                    <ItemsControl ItemsSource="{Binding LargestFiles}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding}" Margin="0,0,0,6" Foreground="{DynamicResource SecondaryTextBrush}" TextWrapping="Wrap"/>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

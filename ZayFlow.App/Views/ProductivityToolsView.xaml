@@ -1,0 +1,39 @@
+<UserControl x:Class="ZayFlow.App.Views.ProductivityToolsView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="clr-namespace:ZayFlow.App.Controls">
+    <Grid Margin="24">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Page Header -->
+        <StackPanel Grid.Row="0" Margin="0,0,0,16">
+            <TextBlock Text="Productivity Tools" Style="{StaticResource HeadingXL}" Margin="0,0,0,6"/>
+            <TextBlock Text="Use AI templates for resumes, proposals, meeting notes, email drafts, and more." Style="{StaticResource BodyText}"/>
+        </StackPanel>
+
+        <Border Grid.Row="1" Style="{StaticResource PremiumCard}" Margin="0,0,0,12">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="260"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <ComboBox Grid.Column="0" Style="{StaticResource PremiumComboBox}" ItemsSource="{Binding Templates}" SelectedItem="{Binding SelectedTemplate}" DisplayMemberPath="Name"/>
+                <TextBox Grid.Column="1" Margin="10,0,10,0" Style="{StaticResource PremiumTextBox}" Text="{Binding Input, UpdateSourceTrigger=PropertyChanged}"/>
+                <Button Grid.Column="2" Style="{StaticResource PrimaryButton}" Content="Generate" Command="{Binding GenerateCommand}"/>
+            </Grid>
+        </Border>
+
+        <Border Grid.Row="2" Style="{StaticResource PremiumCard}">
+            <controls:MarkdownViewer MarkdownText="{Binding Result}"/>
+        </Border>
+
+        <TextBlock Grid.Row="3" Margin="4,10,0,0" Foreground="{DynamicResource TertiaryTextBrush}" FontSize="12"
+                   Text="Tip: Be specific with your input for better AI-generated results."/>
+    </Grid>
+</UserControl>

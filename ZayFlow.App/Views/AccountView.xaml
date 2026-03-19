@@ -1,0 +1,208 @@
+<UserControl x:Class="ZayFlow.App.Views.AccountView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <ScrollViewer Style="{StaticResource PremiumScrollViewer}" Padding="{StaticResource PagePadding}">
+        <StackPanel MaxWidth="700" HorizontalAlignment="Left">
+
+            <!-- Header -->
+            <StackPanel Margin="0,0,0,28">
+                <TextBlock Text="Account &amp; About" Style="{StaticResource HeadingXL}" Margin="0,0,0,6"/>
+                <TextBlock Text="Information about ZayFlow AI and your account." Style="{StaticResource BodyText}"/>
+            </StackPanel>
+
+            <!-- ═══════════════════ APP INFO ═══════════════════ -->
+            <TextBlock Text="About ZayFlow AI" Style="{StaticResource HeadingMD}" Margin="0,0,0,14"/>
+            <Border Style="{StaticResource PremiumCard}" Margin="0,0,0,24">
+                <StackPanel>
+                    <!-- Logo + Name -->
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,20">
+                        <Border Width="56" Height="56" Margin="0,0,16,0">
+                            <TextBlock Text="Z" FontSize="36" FontWeight="Bold" FontFamily="Segoe UI"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center">
+                                <TextBlock.Foreground>
+                                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                        <GradientStop Color="#6366F1" Offset="0"/>
+                                        <GradientStop Color="#A5B4FC" Offset="1"/>
+                                    </LinearGradientBrush>
+                                </TextBlock.Foreground>
+                            </TextBlock>
+                        </Border>
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock Text="ZayFlow AI" FontSize="22" FontWeight="Bold"
+                                       Foreground="{DynamicResource PrimaryTextBrush}"/>
+                            <TextBlock Text="Local AI Productivity Command Center" FontSize="12"
+                                       Foreground="{DynamicResource TertiaryTextBrush}"/>
+                        </StackPanel>
+                    </StackPanel>
+
+                    <!-- Version Info -->
+                    <Grid Margin="0,0,0,12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="140"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="Version" FontWeight="SemiBold" FontSize="13"
+                                   Foreground="{DynamicResource SecondaryTextBrush}"/>
+                        <TextBlock Grid.Column="1" Text="{Binding AppVersion}" FontSize="13"
+                                   Foreground="{DynamicResource PrimaryTextBrush}"/>
+                    </Grid>
+
+                    <Grid Margin="0,0,0,12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="140"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="Build Date" FontWeight="SemiBold" FontSize="13"
+                                   Foreground="{DynamicResource SecondaryTextBrush}"/>
+                        <TextBlock Grid.Column="1" Text="{Binding BuildDate}" FontSize="13"
+                                   Foreground="{DynamicResource PrimaryTextBrush}"/>
+                    </Grid>
+
+                    <Grid Margin="0,0,0,12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="140"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="Framework" FontWeight="SemiBold" FontSize="13"
+                                   Foreground="{DynamicResource SecondaryTextBrush}"/>
+                        <TextBlock Grid.Column="1" Text=".NET 8 / WPF" FontSize="13"
+                                   Foreground="{DynamicResource PrimaryTextBrush}"/>
+                    </Grid>
+
+                    <Grid Margin="0,0,0,12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="140"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="AI Provider" FontWeight="SemiBold" FontSize="13"
+                                   Foreground="{DynamicResource SecondaryTextBrush}"/>
+                        <TextBlock Grid.Column="1" Text="Groq (Llama 3.3 70B)" FontSize="13"
+                                   Foreground="{DynamicResource PrimaryTextBrush}"/>
+                    </Grid>
+
+                    <Border Height="1" Background="{DynamicResource DividerBrush}" Margin="0,8,0,16"/>
+
+                    <TextBlock TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource TertiaryTextBrush}" LineHeight="20">
+                        ZayFlow AI is a local AI productivity command center that lets you control your computer, 
+                        manage files, analyze content, and automate tasks using natural language. 
+                        All processing happens locally — your data stays on your machine.
+                    </TextBlock>
+                </StackPanel>
+            </Border>
+
+            <!-- ═══════════════════ ACCOUNT ═══════════════════ -->
+            <TextBlock Text="Account" Style="{StaticResource HeadingMD}" Margin="0,0,0,14"/>
+            <Border Style="{StaticResource PremiumCard}" Margin="0,0,0,24">
+                <StackPanel>
+                    <Grid Margin="0,0,0,14">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock Text="License Status" FontWeight="SemiBold" FontSize="14"
+                                       Foreground="{DynamicResource PrimaryTextBrush}" Margin="0,0,0,4"/>
+                            <TextBlock Text="{Binding LicenseStatus}" FontSize="13"
+                                       Foreground="{DynamicResource SecondaryTextBrush}"/>
+                        </StackPanel>
+                        <Border Grid.Column="1" VerticalAlignment="Center" Style="{StaticResource BadgeFree}" Padding="14,6">
+                            <TextBlock Text="{Binding LicenseStatus}" FontSize="11" FontWeight="Bold"
+                                       Foreground="{DynamicResource AccentBrush}"/>
+                        </Border>
+                    </Grid>
+
+                    <Border Height="1" Background="{DynamicResource DividerBrush}" Margin="0,4,0,14"/>
+
+                    <TextBlock Text="Premium features coming soon — unlimited AI tokens, priority processing, and advanced automation."
+                               TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource TertiaryTextBrush}" LineHeight="20"/>
+                </StackPanel>
+            </Border>
+
+            <!-- ═══════════════════ DATA & STORAGE ═══════════════════ -->
+            <TextBlock Text="Data &amp; Storage" Style="{StaticResource HeadingMD}" Margin="0,0,0,14"/>
+            <Border Style="{StaticResource PremiumCard}" Margin="0,0,0,24">
+                <StackPanel>
+                    <Grid Margin="0,0,0,14">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock Text="Data Storage Location" FontWeight="SemiBold" FontSize="14"
+                                       Foreground="{DynamicResource PrimaryTextBrush}" Margin="0,0,0,4"/>
+                            <TextBlock Text="{Binding DataStoragePath}" FontSize="11"
+                                       Foreground="{DynamicResource TertiaryTextBrush}" TextWrapping="Wrap"/>
+                        </StackPanel>
+                        <Button Grid.Column="1" Style="{StaticResource SecondaryButton}"
+                                Content="Open Folder" Padding="14,8"
+                                Command="{Binding OpenDataFolderCommand}" VerticalAlignment="Center"/>
+                    </Grid>
+
+                    <Border Height="1" Background="{DynamicResource DividerBrush}" Margin="0,4,0,14"/>
+
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock Text="Reset All Data" FontWeight="SemiBold" FontSize="14"
+                                       Foreground="{DynamicResource ErrorBrush}" Margin="0,0,0,4"/>
+                            <TextBlock Text="Reset all settings and preferences to defaults" FontSize="12"
+                                       Foreground="{DynamicResource TertiaryTextBrush}"/>
+                        </StackPanel>
+                        <Button Grid.Column="1" Style="{StaticResource DangerButton}"
+                                Content="Reset" Padding="14,8"
+                                Command="{Binding ResetAllDataCommand}" VerticalAlignment="Center"/>
+                    </Grid>
+                </StackPanel>
+            </Border>
+
+            <!-- ═══════════════════ API KEY INSTRUCTIONS ═══════════════════ -->
+            <TextBlock Text="Developer: API Key Configuration" Style="{StaticResource HeadingMD}" Margin="0,0,0,14"/>
+            <Border Style="{StaticResource PremiumCard}" Margin="0,0,0,24">
+                <StackPanel>
+                    <TextBlock TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource SecondaryTextBrush}" LineHeight="22">
+                        <Run FontWeight="Bold" Foreground="{DynamicResource PrimaryTextBrush}">To use ZayFlow AI, configure your Groq API key:</Run>
+                        <LineBreak/><LineBreak/>
+                        <Run FontWeight="SemiBold">Step 1: Get a Free API Key</Run>
+                        <LineBreak/>
+                        <Run>Visit: https://console.groq.com</Run>
+                        <LineBreak/>
+                        <Run>Sign up (free) and create a new API key</Run>
+                        <LineBreak/><LineBreak/>
+                        <Run FontWeight="SemiBold">Step 2: Enter Key in Settings</Run>
+                        <LineBreak/>
+                        <Run>Go to Settings → AI &amp; Tokens → Groq API Key</Run>
+                        <LineBreak/>
+                        <Run>Paste your key and click Save Settings</Run>
+                        <LineBreak/><LineBreak/>
+                        <Run FontWeight="SemiBold">Model: Llama 3.3 70B (Versatile)</Run>
+                        <LineBreak/>
+                        <Run>Ultra-fast inference, free tier with generous rate limits</Run>
+                        <LineBreak/><LineBreak/>
+                        <Run FontWeight="SemiBold">Free to use — no credit card needed!</Run>
+                    </TextBlock>
+                </StackPanel>
+            </Border>
+
+            <!-- ═══════════════════ LINKS ═══════════════════ -->
+            <TextBlock Text="Links" Style="{StaticResource HeadingMD}" Margin="0,0,0,14"/>
+            <Border Style="{StaticResource PremiumCard}" Margin="0,0,0,24">
+                <StackPanel>
+                    <Button Style="{StaticResource GhostButton}" Content="Visit Website"
+                            HorizontalAlignment="Left" Command="{Binding OpenGitHubCommand}" Margin="0,0,0,8"/>
+                    <Button Style="{StaticResource GhostButton}" Content="Check for Updates"
+                            HorizontalAlignment="Left" Command="{Binding CheckUpdatesCommand}"/>
+                </StackPanel>
+            </Border>
+
+            <!-- Footer -->
+            <TextBlock Text="© 2026 ZayFlow AI. All rights reserved." FontSize="11"
+                       Foreground="{DynamicResource TertiaryTextBrush}" HorizontalAlignment="Center"
+                       Margin="0,0,0,40"/>
+
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

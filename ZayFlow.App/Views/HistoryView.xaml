@@ -1,0 +1,109 @@
+<UserControl x:Class="ZayFlow.App.Views.HistoryView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:converters="clr-namespace:ZayFlow.App.Converters">
+
+    <UserControl.Resources>
+        <converters:BoolToVisibilityConverter x:Key="BoolVis"/>
+    </UserControl.Resources>
+
+    <ScrollViewer Style="{StaticResource PremiumScrollViewer}" Padding="{StaticResource PagePadding}">
+        <StackPanel>
+
+            <!-- Header -->
+            <Grid Margin="0,0,0,24">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <StackPanel>
+                    <TextBlock Text="History" Style="{StaticResource HeadingXL}" Margin="0,0,0,6"/>
+                    <TextBlock Style="{StaticResource BodyText}">
+                        <Run Text="{Binding TotalActions, Mode=OneWay}"/>
+                        <Run Text=" previous sessions"/>
+                    </TextBlock>
+                </StackPanel>
+                <Button Grid.Column="1" Style="{StaticResource SecondaryButton}" Content="Refresh"
+                        Command="{Binding RefreshCommand}" Padding="14,8"/>
+            </Grid>
+
+            <!-- Search -->
+            <Border Style="{StaticResource PremiumCard}" Margin="0,0,0,20" Padding="16">
+                <Grid>
+                    <TextBlock Text="{StaticResource IconSearch}" Style="{StaticResource FluentIconHover}" FontSize="14"
+                               VerticalAlignment="Center" Margin="8,0,0,0" IsHitTestVisible="False" Panel.ZIndex="1"
+                               Foreground="{DynamicResource TertiaryTextBrush}"/>
+                    <TextBox Style="{StaticResource PremiumTextBox}"
+                             Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
+                             VerticalContentAlignment="Center" Padding="32,8,12,8"
+                             ToolTip="Search by session title or preview"/>
+                    <TextBlock Text="Search history..." FontSize="13"
+                               Foreground="{DynamicResource PlaceholderTextBrush}"
+                               VerticalAlignment="Center" Margin="32,0,0,0"
+                               IsHitTestVisible="False"
+                               Visibility="{Binding IsSearchEmpty, Converter={StaticResource BoolVis}}"/>
+                </Grid>
+            </Border>
+
+            <!-- Empty State -->
+            <Border Style="{StaticResource PremiumCard}" Padding="40,60" Margin="0,0,0,20"
+                    Visibility="{Binding IsHistoryEmpty, Converter={StaticResource BoolVis}}">
+                <StackPanel HorizontalAlignment="Center">
+                    <TextBlock Text="{StaticResource IconDocument}" Style="{StaticResource EmptyStateIcon}"/>
+                    <TextBlock Text="No history yet" Style="{StaticResource EmptyStateTitle}"/>
+                    <TextBlock Text="Your previous AI sessions will appear here.&#x0a;Start a conversation to see your history."
+                               Style="{StaticResource EmptyStateSubtitle}"/>
+                </StackPanel>
+            </Border>
+
+            <!-- Session list -->
+            <ListBox ItemsSource="{Binding FilteredEntries}" 
+                     SelectedItem="{Binding SelectedSession, Mode=TwoWay}"
+                     Background="Transparent" BorderThickness="0"
+                     ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                <ListBox.ItemContainerStyle>
+                    <Style TargetType="ListBoxItem">
+                        <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                        <Setter Property="Padding" Value="0"/>
+                        <Setter Property="Margin" Value="0,0,0,2"/>
+                        <Setter Property="Template">
+                            <Setter.Value>
+                                <ControlTemplate TargetType="ListBoxItem">
+                                    <ContentPresenter/>
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
+                    </Style>
+                </ListBox.ItemContainerStyle>
+                <ListBox.ItemTemplate>
+                    <DataTemplate>
+                        <Border Style="{StaticResource PremiumCard}" Margin="0,0,0,10" Padding="16" Cursor="Hand">
+                            <Border.InputBindings>
+                                <MouseBinding Gesture="LeftClick"
+                                              Command="{Binding DataContext.LoadSessionCommand, RelativeSource={RelativeSource AncestorType=ListBox}}"
+                                              CommandParameter="{Binding}"/>
+                            </Border.InputBindings>
+                            <StackPanel>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="{Binding ActionType}" FontSize="15" FontWeight="SemiBold"
+                                               Foreground="{DynamicResource PrimaryTextBrush}"/>
+                                    <TextBlock Grid.Column="1" Text="{Binding DateText}" FontSize="12"
+                                               Foreground="{DynamicResource TertiaryTextBrush}"/>
+                                </Grid>
+                                <TextBlock Text="{Binding Preview}" Margin="0,6,0,0" FontSize="13" TextWrapping="Wrap"
+                                           MaxHeight="40" TextTrimming="CharacterEllipsis"
+                                           Foreground="{DynamicResource SecondaryTextBrush}"/>
+                                <TextBlock Text="Click to continue this session →" Margin="0,8,0,0" FontSize="11"
+                                           Foreground="{DynamicResource AccentBrush}" Opacity="0.7"/>
+                            </StackPanel>
+                        </Border>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

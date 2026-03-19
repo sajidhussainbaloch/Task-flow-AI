@@ -1,0 +1,213 @@
+<UserControl x:Class="ZayFlow.App.Views.DashboardView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d">
+
+    <ScrollViewer Style="{StaticResource PremiumScrollViewer}" Padding="{StaticResource PagePadding}">
+        <StackPanel>
+
+            <!-- ═══════ WELCOME HEADER ═══════ -->
+            <StackPanel Margin="0,0,0,28">
+                <TextBlock Text="{Binding Greeting}" Style="{StaticResource HeadingXL}" Margin="0,0,0,6"/>
+                <TextBlock Text="Here's what's happening with your workflow today." Style="{StaticResource BodyText}"/>
+            </StackPanel>
+
+            <!-- ═══════ STATS CARDS ROW ═══════ -->
+            <UniformGrid Columns="4" Margin="0,0,0,24">
+
+                <!-- Token Usage -->
+                <Border Style="{StaticResource GlassCardHover}" Margin="0,0,12,0">
+                    <StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+                            <Border Width="36" Height="36" CornerRadius="8"
+                                    Background="{DynamicResource AccentSubtleBrush}" Margin="0,0,10,0">
+                                <TextBlock Text="{StaticResource IconChart}" Style="{StaticResource FluentIconHover}" FontSize="18"/>
+                            </Border>
+                            <StackPanel VerticalAlignment="Center">
+                                <TextBlock Text="Token Usage" Style="{StaticResource CaptionText}" FontSize="11"/>
+                                <TextBlock FontSize="22" FontWeight="Bold" Foreground="{DynamicResource PrimaryTextBrush}">
+                                    <TextBlock.Text>
+                                        <MultiBinding StringFormat="{}{0}/{1}">
+                                            <Binding Path="TokenUsed"/>
+                                            <Binding Path="TokenLimit"/>
+                                        </MultiBinding>
+                                    </TextBlock.Text>
+                                </TextBlock>
+                            </StackPanel>
+                        </StackPanel>
+                        <ProgressBar Style="{StaticResource PremiumProgressBar}"
+                                     Value="{Binding TokenPercent, Mode=OneWay}" Maximum="100"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- Actions Today -->
+                <Border Style="{StaticResource GlassCardHover}" Margin="0,0,12,0">
+                    <StackPanel Orientation="Horizontal">
+                        <Border Width="36" Height="36" CornerRadius="8"
+                                Background="{DynamicResource SuccessSubtleBrush}" Margin="0,0,10,0">
+                            <TextBlock Text="{StaticResource IconLightning}" Style="{StaticResource FluentIconHover}" FontSize="18"/>
+                        </Border>
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock Text="Actions Today" Style="{StaticResource CaptionText}" FontSize="11"/>
+                            <TextBlock Text="{Binding ActionsToday}" FontSize="22" FontWeight="Bold"
+                                       Foreground="{DynamicResource PrimaryTextBrush}"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <!-- Files Processed -->
+                <Border Style="{StaticResource GlassCardHover}" Margin="0,0,12,0">
+                    <StackPanel Orientation="Horizontal">
+                        <Border Width="36" Height="36" CornerRadius="8"
+                                Background="{DynamicResource InfoSubtleBrush}" Margin="0,0,10,0">
+                            <TextBlock Text="{StaticResource IconFolder}" Style="{StaticResource FluentIconHover}" FontSize="18"/>
+                        </Border>
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock Text="Files Processed" Style="{StaticResource CaptionText}" FontSize="11"/>
+                            <TextBlock Text="{Binding FilesProcessed}" FontSize="22" FontWeight="Bold"
+                                       Foreground="{DynamicResource PrimaryTextBrush}"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <!-- Time Saved -->
+                <Border Style="{StaticResource GlassCardHover}">
+                    <StackPanel Orientation="Horizontal">
+                        <Border Width="36" Height="36" CornerRadius="8"
+                                Background="{DynamicResource WarningSubtleBrush}" Margin="0,0,10,0">
+                            <TextBlock Text="{StaticResource IconClock}" Style="{StaticResource FluentIconHover}" FontSize="18"/>
+                        </Border>
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock Text="Time Saved" Style="{StaticResource CaptionText}" FontSize="11"/>
+                            <TextBlock FontSize="22" FontWeight="Bold" Foreground="{DynamicResource PrimaryTextBrush}"
+                                       Text="{Binding TimeSavedMinutes, StringFormat={}{0:F0} min}"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+            </UniformGrid>
+
+            <!-- ═══════ QUICK ACTIONS ═══════ -->
+            <TextBlock Text="Quick Actions" Style="{StaticResource HeadingMD}" Margin="0,0,0,14"/>
+            <UniformGrid Columns="4" Margin="0,0,0,28">
+                <Border Style="{StaticResource GlassCardHover}" Margin="0,0,12,0" Cursor="Hand"
+                        MouseLeftButtonUp="QuickAction_Click" Tag="Ask AI">
+                    <StackPanel HorizontalAlignment="Center">
+                        <Border Width="48" Height="48" CornerRadius="12"
+                                Background="{DynamicResource AccentSubtleBrush}" Margin="0,0,0,10"
+                                HorizontalAlignment="Center">
+                            <TextBlock Text="{StaticResource IconDownload}" Style="{StaticResource FluentIconHover}" FontSize="22"/>
+                        </Border>
+                        <TextBlock Text="Ask AI" HorizontalAlignment="Center" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource PrimaryTextBrush}" FontSize="13"/>
+                        <TextBlock Text="Open assistant chat" HorizontalAlignment="Center"
+                                   Foreground="{DynamicResource TertiaryTextBrush}" FontSize="11" Margin="0,2,0,0"/>
+                    </StackPanel>
+                </Border>
+
+                <Border Style="{StaticResource GlassCardHover}" Margin="0,0,12,0" Cursor="Hand"
+                        MouseLeftButtonUp="QuickAction_Click" Tag="Summarize File">
+                    <StackPanel HorizontalAlignment="Center">
+                        <Border Width="48" Height="48" CornerRadius="12"
+                                Background="{DynamicResource WarningSubtleBrush}" Margin="0,0,0,10"
+                                HorizontalAlignment="Center">
+                            <TextBlock Text="{StaticResource IconTrash}" Style="{StaticResource FluentIconHover}" FontSize="22"/>
+                        </Border>
+                        <TextBlock Text="Summarize" HorizontalAlignment="Center" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource PrimaryTextBrush}" FontSize="13"/>
+                        <TextBlock Text="Analyze a document" HorizontalAlignment="Center"
+                                   Foreground="{DynamicResource TertiaryTextBrush}" FontSize="11" Margin="0,2,0,0"/>
+                    </StackPanel>
+                </Border>
+
+                <Border Style="{StaticResource GlassCardHover}" Margin="0,0,12,0" Cursor="Hand"
+                        MouseLeftButtonUp="QuickAction_Click" Tag="Organize Downloads">
+                    <StackPanel HorizontalAlignment="Center">
+                        <Border Width="48" Height="48" CornerRadius="12"
+                                Background="{DynamicResource SuccessSubtleBrush}" Margin="0,0,0,10"
+                                HorizontalAlignment="Center">
+                            <TextBlock Text="{StaticResource IconEdit}" Style="{StaticResource FluentIconHover}" FontSize="22"/>
+                        </Border>
+                        <TextBlock Text="Organize" HorizontalAlignment="Center" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource PrimaryTextBrush}" FontSize="13"/>
+                        <TextBlock Text="Sort downloads folder" HorizontalAlignment="Center"
+                                   Foreground="{DynamicResource TertiaryTextBrush}" FontSize="11" Margin="0,2,0,0"/>
+                    </StackPanel>
+                </Border>
+
+                <Border Style="{StaticResource GlassCardHover}" Cursor="Hand"
+                        MouseLeftButtonUp="QuickAction_Click" Tag="Create Note">
+                    <StackPanel HorizontalAlignment="Center">
+                        <Border Width="48" Height="48" CornerRadius="12" Margin="0,0,0,10"
+                                HorizontalAlignment="Center"
+                                Background="{DynamicResource AccentGradientBrush}">
+                            <TextBlock Text="{StaticResource IconAI}" Style="{StaticResource FluentIconHover}" FontSize="22"/>
+                        </Border>
+                        <TextBlock Text="Create Note" HorizontalAlignment="Center" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource PrimaryTextBrush}" FontSize="13"/>
+                        <TextBlock Text="Capture an idea" HorizontalAlignment="Center"
+                                   Foreground="{DynamicResource TertiaryTextBrush}" FontSize="11" Margin="0,2,0,0"/>
+                    </StackPanel>
+                </Border>
+            </UniformGrid>
+
+            <!-- ═══════ RECENT ACTIVITY ═══════ -->
+            <TextBlock Text="Recent Activity" Style="{StaticResource HeadingMD}" Margin="0,0,0,14"/>
+            <Border Style="{StaticResource GlassCard}">
+                <ItemsControl ItemsSource="{Binding RecentActions}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Grid Margin="0,0,0,2">
+                                <Border Padding="12,14" CornerRadius="8">
+                                    <Border.Style>
+                                        <Style TargetType="Border">
+                                            <Setter Property="Background" Value="Transparent"/>
+                                            <Style.Triggers>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter Property="Background" Value="{DynamicResource CardHoverBackgroundBrush}"/>
+                                                </Trigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Border.Style>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="40"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+
+                                        <Border Grid.Column="0" Width="36" Height="36" CornerRadius="8"
+                                                Background="{DynamicResource SurfaceBrush}">
+                                            <TextBlock Text="{Binding Icon}" FontFamily="{StaticResource IconFont}" FontSize="16"
+                                                       HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                       Foreground="{DynamicResource IconPrimaryBrush}"/>
+                                        </Border>
+
+                                        <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="8,0,0,0">
+                                            <TextBlock Text="{Binding Title}" FontWeight="Medium" FontSize="13"
+                                                       Foreground="{DynamicResource PrimaryTextBrush}"/>
+                                            <TextBlock Text="{Binding Subtitle}" FontSize="12"
+                                                       Foreground="{DynamicResource TertiaryTextBrush}" Margin="0,2,0,0"/>
+                                        </StackPanel>
+
+                                        <StackPanel Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right">
+                                            <TextBlock Text="{Binding Time}" FontSize="11"
+                                                       Foreground="{DynamicResource TertiaryTextBrush}" HorizontalAlignment="Right"/>
+                                            <Ellipse Width="8" Height="8" HorizontalAlignment="Right" Margin="0,4,0,0">
+                                                <Ellipse.Fill>
+                                                    <SolidColorBrush Color="{Binding StatusColor}"/>
+                                                </Ellipse.Fill>
+                                            </Ellipse>
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
+                            </Grid>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </Border>
+
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

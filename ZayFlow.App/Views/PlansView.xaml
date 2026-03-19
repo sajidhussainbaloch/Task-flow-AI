@@ -1,0 +1,167 @@
+<UserControl x:Class="ZayFlow.App.Views.PlansView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <ScrollViewer Style="{StaticResource PremiumScrollViewer}" Padding="{StaticResource PagePadding}">
+        <StackPanel MaxWidth="900" HorizontalAlignment="Center">
+
+            <!-- Header -->
+            <StackPanel HorizontalAlignment="Center" Margin="0,20,0,40">
+                <TextBlock Text="Choose Your Plan" FontSize="36" FontWeight="Bold"
+                           Foreground="{DynamicResource PrimaryTextBrush}" TextAlignment="Center" Margin="0,0,0,8"/>
+                <TextBlock Text="Unlock premium features and save hours every week"
+                           FontSize="15" Foreground="{DynamicResource SecondaryTextBrush}" TextAlignment="Center"/>
+            </StackPanel>
+
+            <!-- Plans Comparison -->
+            <UniformGrid Columns="2">
+
+                <!-- FREE PLAN -->
+                <Border Style="{StaticResource GlassCardHover}" Margin="0,0,12,0" Padding="32,28">
+                    <StackPanel>
+                        <TextBlock Text="Free Plan" FontSize="18" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource PrimaryTextBrush}" Margin="0,0,0,6"/>
+                        <TextBlock Text="Perfect for getting started" FontSize="13"
+                                   Foreground="{DynamicResource TertiaryTextBrush}" Margin="0,0,0,18"/>
+
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,24">
+                            <TextBlock Text="$0" FontSize="42" FontWeight="Bold"
+                                       Foreground="{DynamicResource PrimaryTextBrush}"/>
+                            <TextBlock Text=" /month" FontSize="16" Foreground="{DynamicResource TertiaryTextBrush}"
+                                       VerticalAlignment="Bottom" Margin="4,0,0,8"/>
+                        </StackPanel>
+
+                        <Button Style="{StaticResource SecondaryButton}" Content="Current Plan"
+                                IsEnabled="False" Margin="0,0,0,28" Padding="0,12" FontSize="14"/>
+
+                        <StackPanel>
+                            <TextBlock Text="✓  Limited tokens daily" FontSize="13" Margin="0,0,0,10"
+                                       Foreground="{DynamicResource SecondaryTextBrush}"/>
+                            <TextBlock Text="✓  Offline intelligence" FontSize="13" Margin="0,0,0,10"
+                                       Foreground="{DynamicResource SecondaryTextBrush}"/>
+                            <TextBlock Text="✓  Basic automation" FontSize="13" Margin="0,0,0,10"
+                                       Foreground="{DynamicResource SecondaryTextBrush}"/>
+                            <TextBlock Text="✓  File organization" FontSize="13" Margin="0,0,0,10"
+                                       Foreground="{DynamicResource SecondaryTextBrush}"/>
+                            <TextBlock Text="✗  AI-powered suggestions" FontSize="13" Margin="0,0,0,10"
+                                       Foreground="{DynamicResource TertiaryTextBrush}"/>
+                            <TextBlock Text="✗  Advanced planning" FontSize="13" Margin="0,0,0,10"
+                                       Foreground="{DynamicResource TertiaryTextBrush}"/>
+                            <TextBlock Text="✗  Priority processing" FontSize="13" Margin="0,0,0,10"
+                                       Foreground="{DynamicResource TertiaryTextBrush}"/>
+                            <TextBlock Text="✗  Premium support" FontSize="13"
+                                       Foreground="{DynamicResource TertiaryTextBrush}"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <!-- PRO PLAN -->
+                <Border Style="{StaticResource GlassCard}" Padding="32,28" CornerRadius="{StaticResource CornerRadiusLG}"
+                        BorderThickness="2" Cursor="Hand"
+                    Background="{DynamicResource GlassBackgroundBrush}"
+                        BorderBrush="{DynamicResource AccentGradientBrush}">
+                    <Border.Effect>
+                        <DropShadowEffect BlurRadius="34" ShadowDepth="4" Opacity="0.22" Color="#6366F1"/>
+                    </Border.Effect>
+
+                    <StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                            <TextBlock Text="Pro Plan" FontSize="18" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource PrimaryTextBrush}"/>
+                            <Border Margin="10,0,0,0" CornerRadius="10" Padding="8,2"
+                                    Background="{DynamicResource AccentGradientBrush}">
+                                <TextBlock Text="POPULAR" FontSize="10" FontWeight="Bold" Foreground="{DynamicResource OnAccentTextBrush}"/>
+                            </Border>
+                        </StackPanel>
+
+                        <TextBlock Text="For power users &amp; professionals" FontSize="13"
+                                   Foreground="{DynamicResource TertiaryTextBrush}" Margin="0,0,0,18"/>
+
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,24">
+                            <TextBlock Text="$9" FontSize="42" FontWeight="Bold"
+                                       Foreground="{DynamicResource PrimaryTextBrush}"/>
+                            <TextBlock Text=" /month" FontSize="16" Foreground="{DynamicResource TertiaryTextBrush}"
+                                       VerticalAlignment="Bottom" Margin="4,0,0,8"/>
+                        </StackPanel>
+
+                        <Button Style="{StaticResource PrimaryButton}" Content="Upgrade to Pro →"
+                                Command="{Binding UpgradeCommand}" Margin="0,0,0,28" Padding="0,12" FontSize="14"/>
+
+                        <StackPanel>
+                            <TextBlock Text="✓  Unlimited tokens" FontSize="13" Margin="0,0,0,10"
+                                       Foreground="{DynamicResource SuccessBrush}" FontWeight="Medium"/>
+                            <TextBlock Text="✓  AI-powered automation" FontSize="13" Margin="0,0,0,10"
+                                       Foreground="{DynamicResource SuccessBrush}" FontWeight="Medium"/>
+                            <TextBlock Text="✓  Advanced planning" FontSize="13" Margin="0,0,0,10"
+                                       Foreground="{DynamicResource SuccessBrush}" FontWeight="Medium"/>
+                            <TextBlock Text="✓  Priority processing" FontSize="13" Margin="0,0,0,10"
+                                       Foreground="{DynamicResource SuccessBrush}" FontWeight="Medium"/>
+                            <TextBlock Text="✓  Smart suggestions" FontSize="13" Margin="0,0,0,10"
+                                       Foreground="{DynamicResource SuccessBrush}" FontWeight="Medium"/>
+                            <TextBlock Text="✓  Batch operations" FontSize="13" Margin="0,0,0,10"
+                                       Foreground="{DynamicResource SuccessBrush}" FontWeight="Medium"/>
+                            <TextBlock Text="✓  Premium support" FontSize="13" Margin="0,0,0,10"
+                                       Foreground="{DynamicResource SuccessBrush}" FontWeight="Medium"/>
+                            <TextBlock Text="✓  Early access to features" FontSize="13"
+                                       Foreground="{DynamicResource SuccessBrush}" FontWeight="Medium"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+            </UniformGrid>
+
+            <!-- FAQ / Benefits -->
+            <Border Style="{StaticResource GlassCard}" Margin="0,32,0,0">
+                <StackPanel>
+                    <TextBlock Text="Why Go Pro?" FontSize="18" FontWeight="SemiBold"
+                               Foreground="{DynamicResource PrimaryTextBrush}" Margin="0,0,0,16"/>
+
+                    <Grid Margin="0,0,0,14">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="40"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="{StaticResource IconLightning}" FontFamily="{StaticResource IconFont}" FontSize="20"/>
+                        <StackPanel Grid.Column="1">
+                            <TextBlock Text="Unlimited AI Power" FontWeight="SemiBold" FontSize="14"
+                                       Foreground="{DynamicResource PrimaryTextBrush}" Margin="0,0,0,4"/>
+                            <TextBlock Text="No token limits. Automate as much as you want." FontSize="13"
+                                       Foreground="{DynamicResource SecondaryTextBrush}" TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </Grid>
+
+                    <Grid Margin="0,0,0,14">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="40"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="{StaticResource IconAI}" FontFamily="{StaticResource IconFont}" FontSize="20"/>
+                        <StackPanel Grid.Column="1">
+                            <TextBlock Text="Advanced AI Features" FontWeight="SemiBold" FontSize="14"
+                                       Foreground="{DynamicResource PrimaryTextBrush}" Margin="0,0,0,4"/>
+                            <TextBlock Text="Get intelligent suggestions and automated workflows tailored to your needs."
+                                       FontSize="13" Foreground="{DynamicResource SecondaryTextBrush}" TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </Grid>
+
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="40"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="{StaticResource IconRocket}" FontFamily="{StaticResource IconFont}" FontSize="20"/>
+                        <StackPanel Grid.Column="1">
+                            <TextBlock Text="Priority Support" FontWeight="SemiBold" FontSize="14"
+                                       Foreground="{DynamicResource PrimaryTextBrush}" Margin="0,0,0,4"/>
+                            <TextBlock Text="Get help when you need it with dedicated priority support."
+                                       FontSize="13" Foreground="{DynamicResource SecondaryTextBrush}" TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </Grid>
+                </StackPanel>
+            </Border>
+
+            <TextBlock Text="Billing managed by Paddle · Cancel anytime" FontSize="12" TextAlignment="Center"
+                       Foreground="{DynamicResource TertiaryTextBrush}" Margin="0,24,0,0"/>
+
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>
