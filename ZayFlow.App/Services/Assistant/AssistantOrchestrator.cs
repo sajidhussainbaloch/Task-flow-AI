@@ -365,14 +365,21 @@ public sealed class AssistantOrchestrator : IAssistantOrchestrator
         "chat", "messenger", "calendar", "scheduler", "reminder",
         "login", "signup", "register", "auth", "crud",
         "database", "backend", "frontend", "fullstack",
+        // App types (additional)
+        "application", "client", "system", "utility", "plugin", "extension",
+        "scraper", "crawler", "automation", "cli", "terminal",
         // Languages / frameworks
         "python", "html", "javascript", "typescript", "flutter", "react",
         "angular", "vue", "django", "express", "csharp", "java", "kotlin",
         "swift", "ruby", "php", "golang", "rust", "wpf", "winform",
         "tkinter", "pygame", "flask", "fastapi", "nextjs", "node",
+        "c++", "cpp", "c language", "objective-c", "perl", "scala", "haskell",
+        "lua", "matlab", "r language", "elixir", "clojure", "assembly",
+        "bash", "powershell", "shell", "batch",
         // File extensions
         ".py", ".js", ".ts", ".cs", ".html", ".css", ".java", ".dart",
-        ".rb", ".php", ".go", ".rs", ".kt", ".swift", ".xaml"
+        ".rb", ".php", ".go", ".rs", ".kt", ".swift", ".xaml",
+        ".cpp", ".cc", ".cxx", ".c", ".h", ".hpp", ".lua", ".sh", ".bat", ".ps1"
     ];
 
     private static bool HasExplicitCodeTarget(string msg)
@@ -483,18 +490,20 @@ public sealed class AssistantOrchestrator : IAssistantOrchestrator
         }
 
         // Ã¢â€â‚¬Ã¢â€â‚¬ Code signals (exact + fuzzy for languages) Ã¢â€â‚¬Ã¢â€â‚¬
-        string[] codeExtensions = [".cs", ".py", ".js", ".xaml", ".html"];
+        string[] codeExtensions = [".cs", ".py", ".js", ".xaml", ".html", ".cpp", ".cc", ".c", ".h", ".hpp"];
         foreach (var ext in codeExtensions)
             if (n.Contains(ext, StringComparison.Ordinal)) scores[AssistantTurnMode.Code] += 3;
 
         string[] codeLangs = ["python", "javascript", "csharp", "flutter", "react",
             "debug", "compile", "algorithm", "typescript", "angular", "vue", "django", "express",
             "kotlin", "swift", "java", "ruby", "php", "golang", "rust", "wpf", "tkinter",
-            "pygame", "flask", "fastapi", "nextjs", "node"];
+            "pygame", "flask", "fastapi", "nextjs", "node",
+            "cpp", "perl", "scala", "haskell", "lua", "elixir", "bash", "powershell", "shell"];
         foreach (var lang in codeLangs)
             if (ContainsFuzzy(n, words, lang)) scores[AssistantTurnMode.Code] += 3;
-        // c# is special Ã¢â‚¬â€ exact match only
+        // c#, c++ are special — exact match only
         if (n.Contains("c#", StringComparison.Ordinal)) scores[AssistantTurnMode.Code] += 3;
+        if (n.Contains("c++", StringComparison.Ordinal)) scores[AssistantTurnMode.Code] += 3;
 
         // Common app types boost Code
         string[] appTypes = ["dashboard", "form", "page", "panel", "timer", "clock",
