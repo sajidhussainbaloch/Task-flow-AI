@@ -28,6 +28,13 @@
     <CornerRadius x:Key="CornerRadiusLG">14</CornerRadius>
     <CornerRadius x:Key="CornerRadiusXL">18</CornerRadius>
     <CornerRadius x:Key="CornerRadiusPill">50</CornerRadius>
+    <Thickness x:Key="ArtifactPanePadding">18</Thickness>
+    <Thickness x:Key="ArtifactCardPadding">14</Thickness>
+
+    <system:Double x:Key="MotionDurationFast" xmlns:system="clr-namespace:System;assembly=mscorlib">0.14</system:Double>
+    <system:Double x:Key="MotionDurationNormal" xmlns:system="clr-namespace:System;assembly=mscorlib">0.22</system:Double>
+    <system:Double x:Key="ElevationLow" xmlns:system="clr-namespace:System;assembly=mscorlib">18</system:Double>
+    <system:Double x:Key="ElevationHigh" xmlns:system="clr-namespace:System;assembly=mscorlib">26</system:Double>
 
     <Style x:Key="FluentIcon" TargetType="TextBlock">
         <Setter Property="FontFamily" Value="{StaticResource IconFont}"/>
@@ -582,8 +589,10 @@
     </Style>
 
     <!-- ═══════════ SCROLLBAR ═══════════ -->
+    <!-- Standalone slim scrollbar (always visible when used directly) -->
     <Style x:Key="PremiumScrollBar" TargetType="ScrollBar">
         <Setter Property="Width" Value="8"/>
+        <Setter Property="MinWidth" Value="8"/>
         <Setter Property="Background" Value="Transparent"/>
         <Setter Property="Template">
             <Setter.Value>
@@ -594,9 +603,9 @@
                                 <Thumb>
                                     <Thumb.Template>
                                         <ControlTemplate TargetType="Thumb">
-                                            <Border CornerRadius="4"
+                                            <Border x:Name="ThumbBorder" CornerRadius="3"
                                                     Background="{DynamicResource ScrollbarThumbBrush}"
-                                                    Margin="1,0"/>
+                                                    Width="6" Margin="1,0"/>
                                         </ControlTemplate>
                                     </Thumb.Template>
                                 </Thumb>
@@ -608,12 +617,66 @@
         </Setter>
     </Style>
 
+    <!-- Auto-hide ScrollViewer: scrollbar fades in on hover over the entire area -->
     <Style x:Key="PremiumScrollViewer" TargetType="ScrollViewer">
         <Setter Property="VerticalScrollBarVisibility" Value="Auto"/>
         <Setter Property="HorizontalScrollBarVisibility" Value="Disabled"/>
-        <Style.Resources>
-            <Style TargetType="ScrollBar" BasedOn="{StaticResource PremiumScrollBar}"/>
-        </Style.Resources>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ScrollViewer">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <ScrollContentPresenter Grid.Column="0"
+                                                CanContentScroll="{TemplateBinding CanContentScroll}"
+                                                Content="{TemplateBinding Content}"
+                                                ContentTemplate="{TemplateBinding ContentTemplate}"
+                                                Margin="{TemplateBinding Padding}"/>
+                        <ScrollBar x:Name="PART_VerticalScrollBar"
+                                   Grid.Column="1"
+                                   Style="{StaticResource PremiumScrollBar}"
+                                   Orientation="Vertical"
+                                   Opacity="0"
+                                   Value="{TemplateBinding VerticalOffset}"
+                                   Maximum="{TemplateBinding ScrollableHeight}"
+                                   ViewportSize="{TemplateBinding ViewportHeight}"
+                                   Visibility="{TemplateBinding ComputedVerticalScrollBarVisibility}"/>
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <!-- Fade in scrollbar when hovering anywhere on the ScrollViewer -->
+                        <EventTrigger RoutedEvent="MouseEnter">
+                            <BeginStoryboard>
+                                <Storyboard>
+                                    <DoubleAnimation Storyboard.TargetName="PART_VerticalScrollBar"
+                                                     Storyboard.TargetProperty="Opacity"
+                                                     To="1" Duration="0:0:0.15">
+                                        <DoubleAnimation.EasingFunction>
+                                            <CubicEase EasingMode="EaseOut"/>
+                                        </DoubleAnimation.EasingFunction>
+                                    </DoubleAnimation>
+                                </Storyboard>
+                            </BeginStoryboard>
+                        </EventTrigger>
+                        <!-- Fade out scrollbar when mouse leaves the ScrollViewer -->
+                        <EventTrigger RoutedEvent="MouseLeave">
+                            <BeginStoryboard>
+                                <Storyboard>
+                                    <DoubleAnimation Storyboard.TargetName="PART_VerticalScrollBar"
+                                                     Storyboard.TargetProperty="Opacity"
+                                                     To="0" Duration="0:0:0.4">
+                                        <DoubleAnimation.EasingFunction>
+                                            <CubicEase EasingMode="EaseOut"/>
+                                        </DoubleAnimation.EasingFunction>
+                                    </DoubleAnimation>
+                                </Storyboard>
+                            </BeginStoryboard>
+                        </EventTrigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
     </Style>
 
     <!-- ═══════════ BADGE ═══════════ -->

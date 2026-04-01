@@ -22,8 +22,8 @@
                                        HorizontalAlignment="Center" VerticalAlignment="Center">
                                 <TextBlock.Foreground>
                                     <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                                        <GradientStop Color="#6366F1" Offset="0"/>
-                                        <GradientStop Color="#A5B4FC" Offset="1"/>
+                                        <GradientStop Color="{StaticResource AccentColor}" Offset="0"/>
+                                        <GradientStop Color="{StaticResource SidebarItemActiveTextColor}" Offset="1"/>
                                     </LinearGradientBrush>
                                 </TextBlock.Foreground>
                             </TextBlock>
@@ -77,21 +77,20 @@
                         </Grid.ColumnDefinitions>
                         <TextBlock Text="AI Provider" FontWeight="SemiBold" FontSize="13"
                                    Foreground="{DynamicResource SecondaryTextBrush}"/>
-                        <TextBlock Grid.Column="1" Text="Groq (Llama 3.3 70B)" FontSize="13"
+                        <TextBlock Grid.Column="1" Text="Cloudflare Workers AI (Llama 3.3 / Qwen Coder / Gemma 3)" FontSize="13"
                                    Foreground="{DynamicResource PrimaryTextBrush}"/>
                     </Grid>
 
                     <Border Height="1" Background="{DynamicResource DividerBrush}" Margin="0,8,0,16"/>
 
                     <TextBlock TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource TertiaryTextBrush}" LineHeight="20">
-                        ZayFlow AI is a local AI productivity command center that lets you control your computer, 
-                        manage files, analyze content, and automate tasks using natural language. 
-                        All processing happens locally — your data stays on your machine.
+                        ZayFlow AI is a desktop productivity command center that lets you control your computer,
+                        manage files, analyze content, and automate tasks using natural language.
+                        AI requests run through Cloudflare Workers AI, with local OCR and privacy controls available before upload.
                     </TextBlock>
                 </StackPanel>
             </Border>
 
-            <!-- ═══════════════════ ACCOUNT ═══════════════════ -->
             <TextBlock Text="Account" Style="{StaticResource HeadingMD}" Margin="0,0,0,14"/>
             <Border Style="{StaticResource PremiumCard}" Margin="0,0,0,24">
                 <StackPanel>
@@ -164,25 +163,23 @@
             <Border Style="{StaticResource PremiumCard}" Margin="0,0,0,24">
                 <StackPanel>
                     <TextBlock TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource SecondaryTextBrush}" LineHeight="22">
-                        <Run FontWeight="Bold" Foreground="{DynamicResource PrimaryTextBrush}">To use ZayFlow AI, configure your Groq API key:</Run>
+                        <Run FontWeight="Bold" Foreground="{DynamicResource PrimaryTextBrush}">To use ZayFlow AI, configure your Cloudflare Workers AI access:</Run>
                         <LineBreak/><LineBreak/>
-                        <Run FontWeight="SemiBold">Step 1: Get a Free API Key</Run>
+                        <Run FontWeight="SemiBold">Step 1: Create a Workers AI token</Run>
                         <LineBreak/>
-                        <Run>Visit: https://console.groq.com</Run>
+                        <Run>Open: https://developers.cloudflare.com/workers-ai/get-started/rest-api/</Run>
                         <LineBreak/>
-                        <Run>Sign up (free) and create a new API key</Run>
+                        <Run>Create a token with Workers AI Read + Edit permissions</Run>
                         <LineBreak/><LineBreak/>
-                        <Run FontWeight="SemiBold">Step 2: Enter Key in Settings</Run>
+                        <Run FontWeight="SemiBold">Step 2: Copy the Account ID</Run>
                         <LineBreak/>
-                        <Run>Go to Settings → AI &amp; Tokens → Groq API Key</Run>
+                        <Run>Use the Account ID shown on the same Workers AI page</Run>
                         <LineBreak/>
-                        <Run>Paste your key and click Save Settings</Run>
+                        <Run>Then open Settings and enter both the token and account ID</Run>
                         <LineBreak/><LineBreak/>
-                        <Run FontWeight="SemiBold">Model: Llama 3.3 70B (Versatile)</Run>
+                        <Run FontWeight="SemiBold">Default models: Llama 3.3 (chat), Qwen 2.5 Coder 32B (code), Gemma 3 (vision)</Run>
                         <LineBreak/>
-                        <Run>Ultra-fast inference, free tier with generous rate limits</Run>
-                        <LineBreak/><LineBreak/>
-                        <Run FontWeight="SemiBold">Free to use — no credit card needed!</Run>
+                        <Run>Smart routing keeps code work on the stronger coder model while everyday chat stays fast.</Run>
                     </TextBlock>
                 </StackPanel>
             </Border>

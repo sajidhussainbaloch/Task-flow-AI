@@ -211,11 +211,38 @@ User message: {userMessage}";
             return new AIResponse
             {
                 Success = true,
-                Message = jsonResponse,
+                Message = SanitizeRawResponse(jsonResponse),
                 Intent = "chat",
                 TokenCost = 1
             };
         }
+    }
+
+    /// <summary>
+    /// Attempts to extract a clean message from a raw AI response that failed JSON parsing.
+    /// </summary>
+    private static string SanitizeRawResponse(string raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+            return "I encountered an issue processing the response. Please try again.";
+
+        var messageMatch = System.Text.RegularExpressions.Regex.Match(
+            raw,
+            "\"message\"\\s*:\\s*\"((?:[^\"\\\\]|\\\\.)*)\"" ,
+            System.Text.RegularExpressions.RegexOptions.Singleline);
+
+        if (messageMatch.Success && !string.IsNullOrWhiteSpace(messageMatch.Groups[1].Value))
+        {
+            return System.Text.RegularExpressions.Regex.Unescape(messageMatch.Groups[1].Value);
+        }
+
+        var trimmed = raw.Trim();
+        if (trimmed.StartsWith("{") || trimmed.StartsWith("[") || trimmed.Contains("\"intent\""))
+        {
+            return "I processed your request but had trouble formatting the response. Please try again.";
+        }
+
+        return raw;
     }
 
     /// <summary>

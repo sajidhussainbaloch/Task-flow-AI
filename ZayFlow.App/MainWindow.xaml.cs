@@ -1,17 +1,14 @@
 using System;
+using System.ComponentModel;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Interop;
-using System.Windows.Media;
 using ZayFlow.App.Services;
 using ZayFlow.App.ViewModels;
 
 namespace ZayFlow.App;
 
-/// <summary>
-/// Main application window — Premium UI with sidebar navigation.
-/// </summary>
 public partial class MainWindow : Window
 {
     private readonly WindowService _windowService;
@@ -21,40 +18,41 @@ public partial class MainWindow : Window
     private bool _isPseudoMaximized;
     private bool _isHandlingStateChange;
     private Rect _restoreBounds;
+
     public NavigationViewModel ViewModel { get; }
 
-    public MainWindow(NavigationViewModel viewModel, WindowService windowService, NotificationService notificationService, IAppPreferencesService preferencesService, ThemeService themeService)
+    public MainWindow(
+        NavigationViewModel viewModel,
+        WindowService windowService,
+        NotificationService notificationService,
+        IAppPreferencesService preferencesService,
+        ThemeService themeService)
     {
         ViewModel = viewModel ?? throw new ArgumentNullException(nameof(viewModel));
         _windowService = windowService ?? throw new ArgumentNullException(nameof(windowService));
         _notificationService = notificationService ?? throw new ArgumentNullException(nameof(notificationService));
         _preferencesService = preferencesService ?? throw new ArgumentNullException(nameof(preferencesService));
         _themeService = themeService ?? throw new ArgumentNullException(nameof(themeService));
-        
+
         DataContext = ViewModel;
         InitializeComponent();
 
         _windowService.Initialize(this, minimizeToTray: _preferencesService.Get().MinimizeToTray);
 
-        // Fix maximize to respect taskbar
-        this.SourceInitialized += (s, e) =>
+        SourceInitialized += (_, _) =>
         {
             var handle = new WindowInteropHelper(this).Handle;
             HwndSource.FromHwnd(handle)?.AddHook(WindowProc);
-            EnableAcrylicBlur(handle);
+            ApplyBackdrop(handle);
         };
 
-        // Handle state changes for premium chrome
-        this.StateChanged += OnWindowStateChanged;
-
-        // Center on first load
-        this.Loaded += (s, e) => _windowService.RestoreLastPosition();
-
-        // Re-apply acrylic blur when theme changes
-        _themeService.ThemeChanged += RefreshAcrylicBlur;
+        StateChanged += OnWindowStateChanged;
+        Loaded += (_, _) => _windowService.RestoreLastPosition();
+        _themeService.ThemeChanged += RefreshBackdrop;
     }
 
-    // ══════════ Win32 Acrylic Blur (Glass Effect) ══════════
+    [DllImport("dwmapi.dll")]
+    private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attribute, ref int value, int size);
 
     [DllImport("user32.dll")]
     private static extern int SetWindowCompositionAttribute(IntPtr hwnd, ref WindowCompositionAttributeData data);
@@ -72,30 +70,49 @@ public partial class MainWindow : Window
     {
         public int AccentState;
         public int AccentFlags;
-        public uint GradientColor;  // AABBGGRR format
+        public uint GradientColor;
         public int AnimationId;
     }
 
     private enum WindowCompositionAttribute
     {
-        WCA_ACCENT_POLICY = 19
+        WcaAccentPolicy = 19
     }
 
-    private void EnableAcrylicBlur(IntPtr hwnd)
+    private void ApplyBackdrop(IntPtr hwnd)
     {
         try
         {
-            // Determine tint color based on current theme (dark = deep navy, light = frosted white)
-            var isDark = _themeService.IsDark;
-            // AABBGGRR — we want semi-transparent tint matching the window background
-            // Dark: #0F0F14 at ~82% opacity → AA=D1, BB=14, GG=0F, RR=0F → 0xD1140F0F
-            // Light: #FAFBFC at ~78% opacity → AA=C7, BB=FC, GG=FB, RR=FA → 0xC7FCFBFA
-            uint tintColor = isDark ? 0xD1140F0F : 0xC7FCFBFA;
+            const int DwmwaUseImmersiveDarkMode = 20;
+            const int DwmwaSystemBackdropType = 38;
+            const int DwmsbtMainWindow = 2;
+            const int DwmsbtTransientWindow = 3;
 
+            var darkMode = _themeService.IsDark ? 1 : 0;
+            DwmSetWindowAttribute(hwnd, DwmwaUseImmersiveDarkMode, ref darkMode, sizeof(int));
+
+            var backdrop = Environment.OSVersion.Version.Build >= 22523 ? DwmsbtMainWindow : DwmsbtTransientWindow;
+            var result = DwmSetWindowAttribute(hwnd, DwmwaSystemBackdropType, ref backdrop, sizeof(int));
+            if (result != 0)
+            {
+                EnableAcrylicFallback(hwnd);
+            }
+        }
+        catch
+        {
+            EnableAcrylicFallback(hwnd);
+        }
+    }
+
+    private void EnableAcrylicFallback(IntPtr hwnd)
+    {
+        try
+        {
+            var tintColor = _themeService.IsDark ? 0xD1140F0F : 0xC7FCFBFA;
             var accent = new AccentPolicy
             {
-                AccentState = 4,    // ACCENT_ENABLE_ACRYLICBLURBEHIND
-                AccentFlags = 2,    // ACCENT_FLAG_DRAW_ALL
+                AccentState = 4,
+                AccentFlags = 2,
                 GradientColor = tintColor,
                 AnimationId = 0
             };
@@ -106,7 +123,7 @@ public partial class MainWindow : Window
 
             var data = new WindowCompositionAttributeData
             {
-                Attribute = WindowCompositionAttribute.WCA_ACCENT_POLICY,
+                Attribute = WindowCompositionAttribute.WcaAccentPolicy,
                 Data = accentPtr,
                 SizeOfData = accentSize
             };
@@ -116,28 +133,24 @@ public partial class MainWindow : Window
         }
         catch
         {
-            // Fallback: acrylic not supported on this OS version — solid background remains
         }
     }
 
-    /// <summary>
-    /// Re-apply acrylic blur when theme changes (called from theme toggle).
-    /// </summary>
-    public void RefreshAcrylicBlur()
+    public void RefreshBackdrop()
     {
         var hwnd = new WindowInteropHelper(this).Handle;
         if (hwnd != IntPtr.Zero)
-            EnableAcrylicBlur(hwnd);
+        {
+            ApplyBackdrop(hwnd);
+        }
     }
 
-    // ══════════ Window State → Chrome Adaptation ══════════
     private void OnWindowStateChanged(object? sender, EventArgs e)
     {
-        if (_isHandlingStateChange)
+        if (_isHandlingStateChange || WindowState == WindowState.Minimized)
+        {
             return;
-
-        if (WindowState == WindowState.Minimized)
-            return;
+        }
 
         if (WindowState == WindowState.Maximized)
         {
@@ -162,7 +175,7 @@ public partial class MainWindow : Window
             MainBorder.Effect = null;
             TitleBarBorder.CornerRadius = new CornerRadius(0);
             SidebarBorder.CornerRadius = new CornerRadius(0);
-            MaximizeBtn.Content = "❐";
+            MaximizeBtn.Content = "[]";
         }
         else
         {
@@ -171,30 +184,30 @@ public partial class MainWindow : Window
             MainBorder.Effect = new System.Windows.Media.Effects.DropShadowEffect
             {
                 Color = System.Windows.Media.Colors.Black,
-                Opacity = 0.50,
+                Opacity = 0.48,
                 BlurRadius = 28,
                 ShadowDepth = 0,
                 Direction = 270
             };
             TitleBarBorder.CornerRadius = new CornerRadius(14, 14, 0, 0);
             SidebarBorder.CornerRadius = new CornerRadius(0, 0, 0, 14);
-            MaximizeBtn.Content = "□";
+            MaximizeBtn.Content = "O";
         }
     }
 
     private Rect GetCurrentMonitorWorkArea()
     {
         var handle = new WindowInteropHelper(this).Handle;
-        var mi = new MONITORINFO { cbSize = Marshal.SizeOf(typeof(MONITORINFO)) };
+        var info = new MonitorInfo { cbSize = Marshal.SizeOf(typeof(MonitorInfo)) };
         var monitor = MonitorFromWindow(handle, 0x00000002);
 
-        if (monitor != IntPtr.Zero && GetMonitorInfo(monitor, ref mi))
+        if (monitor != IntPtr.Zero && GetMonitorInfo(monitor, ref info))
         {
             return new Rect(
-                mi.rcWork.Left,
-                mi.rcWork.Top,
-                mi.rcWork.Right - mi.rcWork.Left,
-                mi.rcWork.Bottom - mi.rcWork.Top);
+                info.rcWork.Left,
+                info.rcWork.Top,
+                info.rcWork.Right - info.rcWork.Left,
+                info.rcWork.Bottom - info.rcWork.Top);
         }
 
         return SystemParameters.WorkArea;
@@ -225,41 +238,39 @@ public partial class MainWindow : Window
         ApplyWindowChrome(false);
     }
 
-    /// <summary>
-    /// Hide to tray instead of closing (unless app is shutting down).
-    /// </summary>
-    protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
+    protected override void OnClosing(CancelEventArgs e)
     {
         e.Cancel = true;
         _windowService.MinimizeWindow();
         base.OnClosing(e);
     }
 
-    // ══════════ Win32: Fix maximize to respect taskbar ══════════
+    [DllImport("user32.dll")]
+    private static extern IntPtr MonitorFromWindow(IntPtr hwnd, uint flags);
 
     [DllImport("user32.dll")]
-    private static extern IntPtr MonitorFromWindow(IntPtr hwnd, uint dwFlags);
-
-    [DllImport("user32.dll")]
-    private static extern bool GetMonitorInfo(IntPtr hMonitor, ref MONITORINFO lpmi);
+    private static extern bool GetMonitorInfo(IntPtr monitor, ref MonitorInfo info);
 
     [StructLayout(LayoutKind.Sequential)]
-    private struct MONITORINFO
+    private struct MonitorInfo
     {
         public int cbSize;
-        public RECT rcMonitor;
-        public RECT rcWork;
+        public RectInt rcMonitor;
+        public RectInt rcWork;
         public uint dwFlags;
     }
 
     [StructLayout(LayoutKind.Sequential)]
-    private struct RECT
+    private struct RectInt
     {
-        public int Left, Top, Right, Bottom;
+        public int Left;
+        public int Top;
+        public int Right;
+        public int Bottom;
     }
 
     [StructLayout(LayoutKind.Sequential)]
-    private struct MINMAXINFO
+    private struct MinMaxInfo
     {
         public System.Drawing.Point ptReserved;
         public System.Drawing.Point ptMaxSize;
@@ -270,42 +281,45 @@ public partial class MainWindow : Window
 
     private IntPtr WindowProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
-        // WM_GETMINMAXINFO = 0x0024
-        if (msg == 0x0024)
+        const int WmGetMinMaxInfo = 0x0024;
+        if (msg == WmGetMinMaxInfo)
         {
-            var mi = new MONITORINFO { cbSize = Marshal.SizeOf(typeof(MONITORINFO)) };
-            var monitor = MonitorFromWindow(hwnd, 0x00000002); // MONITOR_DEFAULTTONEAREST
-            if (monitor != IntPtr.Zero && GetMonitorInfo(monitor, ref mi))
+            var info = new MonitorInfo { cbSize = Marshal.SizeOf(typeof(MonitorInfo)) };
+            var monitor = MonitorFromWindow(hwnd, 0x00000002);
+            if (monitor != IntPtr.Zero && GetMonitorInfo(monitor, ref info))
             {
-                var mmi = Marshal.PtrToStructure<MINMAXINFO>(lParam);
-                mmi.ptMaxPosition = new System.Drawing.Point(mi.rcWork.Left - mi.rcMonitor.Left,
-                                                              mi.rcWork.Top - mi.rcMonitor.Top);
-                mmi.ptMaxSize = new System.Drawing.Point(mi.rcWork.Right - mi.rcWork.Left,
-                                                          mi.rcWork.Bottom - mi.rcWork.Top);
-                Marshal.StructureToPtr(mmi, lParam, true);
+                var data = Marshal.PtrToStructure<MinMaxInfo>(lParam);
+                data.ptMaxPosition = new System.Drawing.Point(
+                    info.rcWork.Left - info.rcMonitor.Left,
+                    info.rcWork.Top - info.rcMonitor.Top);
+                data.ptMaxSize = new System.Drawing.Point(
+                    info.rcWork.Right - info.rcWork.Left,
+                    info.rcWork.Bottom - info.rcWork.Top);
+                Marshal.StructureToPtr(data, lParam, true);
             }
+
             handled = true;
         }
+
         return IntPtr.Zero;
     }
 
-    // ══════════ Title Bar Drag ══════════
     private void TitleBar_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
         if (e.ClickCount == 2)
-            MaximizeButton_Click(sender, new RoutedEventArgs());
-        else
         {
-            if (_isPseudoMaximized)
-            {
-                ToggleMaximizeRestore();
-            }
-
-            DragMove();
+            MaximizeButton_Click(sender, new RoutedEventArgs());
+            return;
         }
+
+        if (_isPseudoMaximized)
+        {
+            ToggleMaximizeRestore();
+        }
+
+        DragMove();
     }
 
-    // ══════════ Window Controls ══════════
     private void MinimizeButton_Click(object sender, RoutedEventArgs e)
     {
         _windowService.MinimizeWindow();
@@ -322,7 +336,6 @@ public partial class MainWindow : Window
         _windowService.MinimizeWindow();
     }
 
-    // ══════════ Navigation Click ══════════
     private void NavItem_Click(object sender, MouseButtonEventArgs e)
     {
         if (sender is FrameworkElement element && element.Tag is string key)
@@ -330,5 +343,14 @@ public partial class MainWindow : Window
             ViewModel.NavigateCommand.Execute(key);
         }
     }
-}
 
+    private void ChatHistoryItem_Click(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is FrameworkElement element && element.Tag is string chatId)
+        {
+            // Navigate to AI page first, then load the chat
+            ViewModel.NavigateCommand.Execute("AIAssistant");
+            ViewModel.AIAssistantVM.LoadChatCommand.Execute(chatId);
+        }
+    }
+}

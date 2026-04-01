@@ -4,69 +4,37 @@ using System.Text.Json;
 namespace ZayFlow.Backend.Services;
 
 /// <summary>
-/// Backend-side AI configuration. The Groq API key and model selection
-/// are controlled HERE, not in the frontend UI.
-/// 
+/// Backend-side AI configuration for Cloudflare Workers AI.
+///
 /// Configuration file location:
 ///   %LOCALAPPDATA%\ZayFlow\backend-config.json
-/// 
+///
 /// Example content:
 /// {
-///   "GroqApiKey": "gsk_YOUR_API_KEY_HERE",
-///   "Model": "llama-3.3-70b-versatile",
+///   "CloudflareApiToken": "cfut_YOUR_TOKEN",
+///   "CloudflareAccountId": "your_account_id",
+///   "Model": "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
 ///   "MaxTokensPerRequest": 8000,
-///   "Temperature": 0.7
+///   "Temperature": 0.2
 /// }
-/// 
-/// You can also set the API key via environment variable:
-///   ZAYFLOW_GROQ_API_KEY=gsk_YOUR_API_KEY_HERE
 /// </summary>
 public sealed class BackendAIConfig
 {
-    /// <summary>
-    /// Groq API key. Get a free one at https://console.groq.com
-    /// </summary>
-    public string GroqApiKey { get; set; } = string.Empty;
-
-    /// <summary>
-    /// AI model to use. Default: llama-3.3-70b-versatile (free on Groq).
-    /// Other options: llama-3.1-8b-instant, mixtral-8x7b-32768
-    /// </summary>
-    public string Model { get; set; } = "llama-3.3-70b-versatile";
-
-    /// <summary>
-    /// Max tokens per AI request.
-    /// </summary>
+    public string CloudflareApiToken { get; set; } = string.Empty;
+    public string CloudflareAccountId { get; set; } = string.Empty;
+    public string Model { get; set; } = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
     public int MaxTokensPerRequest { get; set; } = 8000;
-
-    /// <summary>
-    /// Temperature for AI responses (0.0 = deterministic, 1.0 = creative).
-    /// </summary>
-    public double Temperature { get; set; } = 0.7;
-
-    /// <summary>
-    /// Enable AI response speed mode (uses faster/smaller model when true).
-    /// </summary>
+    public double Temperature { get; set; } = 0.2;
     public bool SpeedMode { get; set; } = false;
-
-    /// <summary>
-    /// Speed mode model (smaller, faster).
-    /// </summary>
-    public string SpeedModeModel { get; set; } = "llama-3.1-8b-instant";
+    public string SpeedModeModel { get; set; } = "@cf/meta/llama-3.1-8b-instruct";
 }
 
-/// <summary>
-/// Loads and manages the backend AI configuration.
-/// API key resolution order:
-///   1. Environment variable: ZAYFLOW_GROQ_API_KEY
-///   2. Config file: %LOCALAPPDATA%\ZayFlow\backend-config.json
-///   3. Settings stored via the app preferences (fallback)
-/// </summary>
 public interface IBackendAIConfiguration
 {
     BackendAIConfig GetConfig();
     void SaveConfig(BackendAIConfig config);
-    string ResolveGroqApiKey(string? fallbackFromPreferences = null);
+    string ResolveCloudflareApiToken(string? fallbackFromPreferences = null);
+    string ResolveCloudflareAccountId(string? fallbackFromPreferences = null);
 }
 
 public sealed class BackendAIConfigurationService : IBackendAIConfiguration
@@ -88,7 +56,6 @@ public sealed class BackendAIConfigurationService : IBackendAIConfiguration
         Directory.CreateDirectory(appData);
         _configPath = Path.Combine(appData, "backend-config.json");
 
-        // Create default config file if it doesn't exist
         if (!File.Exists(_configPath))
         {
             SaveConfig(new BackendAIConfig());
@@ -99,7 +66,10 @@ public sealed class BackendAIConfigurationService : IBackendAIConfiguration
     {
         lock (_lock)
         {
-            if (_cached != null) return _cached;
+            if (_cached != null)
+            {
+                return _cached;
+            }
 
             try
             {
@@ -132,37 +102,81 @@ public sealed class BackendAIConfigurationService : IBackendAIConfiguration
         }
     }
 
-    /// <summary>
-    /// Resolves the Groq API key using priority order:
-    /// 1. Environment variable ZAYFLOW_GROQ_API_KEY
-    /// 2. Backend config file (always reloads from disk)
-    /// 3. Fallback from app preferences (user-entered)
-    /// </summary>
-    public string ResolveGroqApiKey(string? fallbackFromPreferences = null)
+    public string ResolveCloudflareApiToken(string? fallbackFromPreferences = null)
     {
-        // Priority 1: Environment variable
-        var envKey = Environment.GetEnvironmentVariable("ZAYFLOW_GROQ_API_KEY");
-        if (!string.IsNullOrWhiteSpace(envKey))
-            return envKey;
+        var envValue = Environment.GetEnvironmentVariable("CLOUDFLARE_API_TOKEN");
+        if (!string.IsNullOrWhiteSpace(envValue))
+        {
+            return envValue;
+        }
 
-        // Priority 2: Backend config file (force reload from disk, bypass cache)
+        envValue = Environment.GetEnvironmentVariable("ZAYFLOW_CLOUDFLARE_API_TOKEN");
+        if (!string.IsNullOrWhiteSpace(envValue))
+        {
+            return envValue;
+        }
+
         try
         {
             if (File.Exists(_configPath))
             {
                 var json = File.ReadAllText(_configPath);
                 var config = JsonSerializer.Deserialize<BackendAIConfig>(json, JsonOptions);
-                if (config != null && !string.IsNullOrWhiteSpace(config.GroqApiKey))
+                if (config != null && !string.IsNullOrWhiteSpace(config.CloudflareApiToken))
                 {
-                    // Update cache with fresh data
-                    lock (_lock) { _cached = config; }
-                    return config.GroqApiKey;
+                    lock (_lock)
+                    {
+                        _cached = config;
+                    }
+
+                    return config.CloudflareApiToken;
                 }
             }
         }
-        catch { /* Ignore read errors */ }
+        catch
+        {
+            // Ignore read errors and fall back to preferences.
+        }
 
-        // Priority 3: Fallback from preferences
+        return fallbackFromPreferences ?? string.Empty;
+    }
+
+    public string ResolveCloudflareAccountId(string? fallbackFromPreferences = null)
+    {
+        var envValue = Environment.GetEnvironmentVariable("CLOUDFLARE_ACCOUNT_ID");
+        if (!string.IsNullOrWhiteSpace(envValue))
+        {
+            return envValue;
+        }
+
+        envValue = Environment.GetEnvironmentVariable("ZAYFLOW_CLOUDFLARE_ACCOUNT_ID");
+        if (!string.IsNullOrWhiteSpace(envValue))
+        {
+            return envValue;
+        }
+
+        try
+        {
+            if (File.Exists(_configPath))
+            {
+                var json = File.ReadAllText(_configPath);
+                var config = JsonSerializer.Deserialize<BackendAIConfig>(json, JsonOptions);
+                if (config != null && !string.IsNullOrWhiteSpace(config.CloudflareAccountId))
+                {
+                    lock (_lock)
+                    {
+                        _cached = config;
+                    }
+
+                    return config.CloudflareAccountId;
+                }
+            }
+        }
+        catch
+        {
+            // Ignore read errors and fall back to preferences.
+        }
+
         return fallbackFromPreferences ?? string.Empty;
     }
 }

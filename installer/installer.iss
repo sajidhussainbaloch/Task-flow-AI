@@ -7,8 +7,8 @@
 ; ============================================================================
 
 #define MyAppName "ZayFlow AI"
-#define MyAppVersion "1.0.0"
-#define MyAppPublisher "Sajid"
+#define MyAppVersion "3.0.0"
+#define MyAppPublisher "ZayQen"
 #define MyAppURL "https://github.com/sajidhussainbaloch/Task-flow-AI"
 #define MyAppExeName "ZayFlow.App.exe"
 #define MyAppDescription "Windows PC Management & Automation Assistant"

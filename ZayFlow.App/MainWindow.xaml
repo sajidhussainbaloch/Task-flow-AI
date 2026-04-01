@@ -112,44 +112,23 @@
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
 
-                    <!-- Logo + Name -->
+                    <!-- Logo + Name (clean, no hamburger) -->
                     <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                        <Border Width="30" Height="30" Margin="0,0,10,0" CornerRadius="9"
+                        <Border Width="28" Height="28" Margin="0,0,8,0" CornerRadius="8"
                                 Background="{DynamicResource AccentGradientBrush}">
-                            <TextBlock Text="Z" FontSize="17" FontWeight="Bold" FontFamily="Segoe UI"
+                            <TextBlock Text="Z" FontSize="15" FontWeight="Bold" FontFamily="Segoe UI"
                                        HorizontalAlignment="Center" VerticalAlignment="Center"
                                        Foreground="White"/>
                         </Border>
-                        <StackPanel VerticalAlignment="Center">
-                            <TextBlock Text="ZayFlow" FontSize="14" FontWeight="SemiBold"
-                                       Foreground="{DynamicResource PrimaryTextBrush}"/>
-                            <TextBlock Text="AI workspace for calm, fast automation"
-                                       FontSize="10" Margin="0,-1,0,0"
-                                       Foreground="{DynamicResource TertiaryTextBrush}"/>
-                        </StackPanel>
-
-                        <!-- User Plan Badge -->
-                        <Border Margin="12,0,0,0" VerticalAlignment="Center" Style="{StaticResource BadgeFree}"
-                                Background="{DynamicResource AccentSubtleBrush}" BorderBrush="{DynamicResource BorderHoverBrush}">
-                            <TextBlock Text="{Binding UserPlan}" FontSize="10" FontWeight="Bold"
-                                       Foreground="{DynamicResource SidebarItemActiveTextBrush}"/>
-                        </Border>
+                        <TextBlock Text="ZayFlow" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center"
+                                   Foreground="{DynamicResource PrimaryTextBrush}"/>
                     </StackPanel>
 
                     <!-- Center (empty for drag) -->
                     <Grid Grid.Column="1"/>
 
-                    <!-- Token Counter & Settings -->
+                    <!-- Settings (clean, no token counter) -->
                     <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,16,0">
-                        <Border Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderBrush}"
-                                BorderThickness="1" CornerRadius="14" Padding="10,4" Margin="0,0,10,0">
-                            <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="{StaticResource IconChart}" Style="{StaticResource FluentIcon}" FontSize="12" Margin="0,0,6,0"/>
-                                <TextBlock Text="{Binding TokenText}" FontSize="11" FontWeight="Medium"
-                                           Foreground="{DynamicResource SecondaryTextBrush}"/>
-                            </StackPanel>
-                        </Border>
-
                         <Button Style="{StaticResource GhostButton}" Content="{Binding ThemeIcon}" FontSize="14" Padding="8" FontFamily="{StaticResource IconFont}"
                                 Command="{Binding ToggleThemeCommand}" Foreground="{DynamicResource IconPrimaryBrush}"/>
                         <Button Style="{StaticResource GhostButton}" Content="{StaticResource IconSettings}" FontSize="14" Padding="8" FontFamily="{StaticResource IconFont}"
@@ -177,129 +156,190 @@
                     <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
 
-                <!-- ═══════ SIDEBAR NAVIGATION ═══════ -->
+                <!-- ═══════ SIDEBAR — ChatGPT Style ═══════ -->
                 <Border x:Name="SidebarBorder" Grid.Column="0" Background="{DynamicResource SidebarGlassBrush}"
                     BorderThickness="0,0,1,0" BorderBrush="{DynamicResource GradientDividerBrush}"
-                        CornerRadius="0,0,0,14">
+                        CornerRadius="0,0,0,14"
+                        Visibility="{Binding IsSidebarExpanded, Converter={StaticResource BoolVis}}">
                     <Grid>
                         <Grid.RowDefinitions>
-                            <RowDefinition Height="*"/>
-                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>  <!-- Sidebar toggle + New Chat -->
+                            <RowDefinition Height="*"/>     <!-- Chat History -->
+                            <RowDefinition Height="Auto"/>  <!-- Account at bottom -->
                         </Grid.RowDefinitions>
 
-                        <!-- Navigation Items -->
-                        <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto"
-                                      HorizontalScrollBarVisibility="Disabled" Padding="8,12">
-                            <ItemsControl ItemsSource="{Binding NavigationItems}">
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate>
-                                        <Border Margin="0,2" CornerRadius="8" Cursor="Hand"
-                                                MouseLeftButtonUp="NavItem_Click" Tag="{Binding Key}">
-                                            <Border.Style>
-                                                <Style TargetType="Border">
-                                                    <Setter Property="Background" Value="Transparent"/>
-                                                    <Setter Property="BorderBrush" Value="Transparent"/>
-                                                    <Setter Property="BorderThickness" Value="1"/>
-                                                    <Setter Property="RenderTransformOrigin" Value="0.5,0.5"/>
-                                                    <Setter Property="RenderTransform">
-                                                        <Setter.Value>
-                                                            <ScaleTransform ScaleX="1" ScaleY="1"/>
-                                                        </Setter.Value>
-                                                    </Setter>
-                                                    <Style.Triggers>
-                                                        <EventTrigger RoutedEvent="MouseEnter">
-                                                            <BeginStoryboard>
-                                                                <Storyboard>
-                                                                    <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleX)"
-                                                                                     To="1.015" Duration="0:0:0.14"/>
-                                                                    <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)"
-                                                                                     To="1.015" Duration="0:0:0.14"/>
-                                                                </Storyboard>
-                                                            </BeginStoryboard>
-                                                        </EventTrigger>
-                                                        <EventTrigger RoutedEvent="MouseLeave">
-                                                            <BeginStoryboard>
-                                                                <Storyboard>
-                                                                    <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleX)"
-                                                                                     To="1" Duration="0:0:0.12"/>
-                                                                    <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)"
-                                                                                     To="1" Duration="0:0:0.12"/>
-                                                                </Storyboard>
-                                                            </BeginStoryboard>
-                                                        </EventTrigger>
-                                                        <DataTrigger Binding="{Binding IsSelected}" Value="True">
-                                                            <Setter Property="Background" Value="{DynamicResource SidebarItemActiveBrush}"/>
-                                                            <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
-                                                        </DataTrigger>
-                                                        <Trigger Property="IsMouseOver" Value="True">
-                                                            <Setter Property="Background" Value="{DynamicResource SidebarItemHoverBrush}"/>
-                                                            <Setter Property="BorderBrush" Value="{DynamicResource BorderHoverBrush}"/>
-                                                        </Trigger>
-                                                    </Style.Triggers>
-                                                </Style>
-                                            </Border.Style>
-                                            <Grid>
-                                                <!-- Active left accent bar -->
-                                                <Border HorizontalAlignment="Left" Width="3" CornerRadius="0,3,3,0" Margin="0,4">
-                                                    <Border.Style>
-                                                        <Style TargetType="Border">
-                                                            <Setter Property="Background" Value="Transparent"/>
-                                                            <Style.Triggers>
-                                                                <DataTrigger Binding="{Binding IsSelected}" Value="True">
-                                                                    <Setter Property="Background" Value="{DynamicResource AccentBrush}"/>
-                                                                </DataTrigger>
-                                                            </Style.Triggers>
-                                                        </Style>
-                                                    </Border.Style>
-                                                </Border>
-                                                <StackPanel Orientation="Horizontal" Margin="14,10">
-                                                <TextBlock Text="{Binding Icon}" FontFamily="{StaticResource IconFont}" FontSize="16" Width="24" Margin="0,0,12,0">
-                                                    <TextBlock.Style>
-                                                        <Style TargetType="TextBlock">
-                                                            <Setter Property="Foreground" Value="{DynamicResource IconPrimaryBrush}"/>
-                                                            <Style.Triggers>
-                                                                <DataTrigger Binding="{Binding IsSelected}" Value="True">
-                                                                    <Setter Property="Foreground" Value="{DynamicResource AccentBrush}"/>
-                                                                </DataTrigger>
-                                                            </Style.Triggers>
-                                                        </Style>
-                                                    </TextBlock.Style>
-                                                </TextBlock>
-                                                <TextBlock Text="{Binding Name}" FontSize="13" FontWeight="Medium"
-                                                           Visibility="{Binding DataContext.IsSidebarExpanded, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolVis}}">
-                                                    <TextBlock.Style>
-                                                        <Style TargetType="TextBlock">
-                                                            <Setter Property="Foreground" Value="{DynamicResource SecondaryTextBrush}"/>
-                                                            <Style.Triggers>
-                                                                <DataTrigger Binding="{Binding IsSelected}" Value="True">
-                                                                    <Setter Property="Foreground" Value="{DynamicResource SidebarItemActiveTextBrush}"/>
-                                                                    <Setter Property="FontWeight" Value="SemiBold"/>
-                                                                </DataTrigger>
-                                                            </Style.Triggers>
-                                                        </Style>
-                                                    </TextBlock.Style>
-                                                </TextBlock>
-                                            </StackPanel>
-                                            </Grid>
-                                        </Border>
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
+                        <!-- ── Top: New Chat button + sidebar toggle ── -->
+                        <DockPanel Grid.Row="0" Margin="8,12,8,4">
+                            <!-- Sidebar collapse toggle (right side) -->
+                            <Button DockPanel.Dock="Right" Style="{StaticResource GhostButton}" Padding="6"
+                                    Command="{Binding ToggleSidebarCommand}" ToolTip="Collapse sidebar" Cursor="Hand"
+                                    VerticalAlignment="Center">
+                                <TextBlock Text="&#xE89F;" FontFamily="{StaticResource IconFont}" FontSize="16"
+                                           Foreground="{DynamicResource TertiaryTextBrush}"/>
+                            </Button>
+
+                            <!-- New Chat button (left, fills remaining space) -->
+                            <Button Style="{StaticResource GhostButton}" HorizontalAlignment="Stretch"
+                                    HorizontalContentAlignment="Left" Padding="8,8"
+                                    Command="{Binding AIAssistantVM.NewChatCommand}" Cursor="Hand"
+                                    ToolTip="New chat">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="&#xE710;" FontFamily="{StaticResource IconFont}" FontSize="16"
+                                               Foreground="{DynamicResource AccentBrush}" VerticalAlignment="Center"
+                                               Margin="0,0,8,0"/>
+                                    <TextBlock Text="New chat" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center"
+                                               Foreground="{DynamicResource PrimaryTextBrush}"/>
+                                </StackPanel>
+                            </Button>
+                        </DockPanel>
+
+                        <!-- ── Chat History List ── -->
+                        <ScrollViewer Grid.Row="1" Style="{StaticResource PremiumScrollViewer}"
+                                      VerticalScrollBarVisibility="Auto"
+                                      HorizontalScrollBarVisibility="Disabled" Padding="4,0">
+                            <StackPanel Margin="4,4,4,8">
+                                <TextBlock Text="Recent" FontSize="11" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource TertiaryTextBrush}"
+                                           Margin="12,8,0,6"/>
+
+                                <ItemsControl ItemsSource="{Binding AIAssistantVM.PastChats}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border Margin="0,1" CornerRadius="8" Cursor="Hand" Padding="10,9"
+                                                    MouseLeftButtonUp="ChatHistoryItem_Click" Tag="{Binding Id}">
+                                                <Border.Style>
+                                                    <Style TargetType="Border">
+                                                        <Setter Property="Background" Value="Transparent"/>
+                                                        <Style.Triggers>
+                                                            <Trigger Property="IsMouseOver" Value="True">
+                                                                <Setter Property="Background" Value="{DynamicResource SidebarItemHoverBrush}"/>
+                                                            </Trigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </Border.Style>
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*"/>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                    </Grid.ColumnDefinitions>
+
+                                                    <!-- Chat title (truncated) -->
+                                                    <TextBlock Grid.Column="0" Text="{Binding Title}" FontSize="13"
+                                                               TextTrimming="CharacterEllipsis" MaxWidth="170"
+                                                               Foreground="{DynamicResource SecondaryTextBrush}" VerticalAlignment="Center"/>
+
+                                                    <!-- 3-dot menu (visible on hover) -->
+                                                    <ToggleButton x:Name="ChatMenuToggle" Grid.Column="1" Padding="4,2"
+                                                            IsChecked="{Binding IsMenuOpen, Mode=TwoWay}"
+                                                            VerticalAlignment="Center">
+                                                        <ToggleButton.Template>
+                                                            <ControlTemplate TargetType="ToggleButton">
+                                                                <Border x:Name="MenuBtnBd" Background="Transparent" CornerRadius="6" Padding="4,2" Cursor="Hand">
+                                                                    <TextBlock Text="&#xE712;" FontFamily="{StaticResource IconFont}" FontSize="13"
+                                                                               Foreground="{DynamicResource TertiaryTextBrush}"
+                                                                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                                </Border>
+                                                                <ControlTemplate.Triggers>
+                                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                                        <Setter TargetName="MenuBtnBd" Property="Background" Value="{DynamicResource SidebarItemHoverBrush}"/>
+                                                                    </Trigger>
+                                                                </ControlTemplate.Triggers>
+                                                            </ControlTemplate>
+                                                        </ToggleButton.Template>
+                                                        <ToggleButton.Style>
+                                                            <Style TargetType="ToggleButton">
+                                                                <Setter Property="Visibility" Value="Hidden"/>
+                                                                <Style.Triggers>
+                                                                    <DataTrigger Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=Border}}" Value="True">
+                                                                        <Setter Property="Visibility" Value="Visible"/>
+                                                                    </DataTrigger>
+                                                                    <DataTrigger Binding="{Binding IsMenuOpen}" Value="True">
+                                                                        <Setter Property="Visibility" Value="Visible"/>
+                                                                    </DataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </ToggleButton.Style>
+                                                    </ToggleButton>
+
+                                                    <!-- Dropdown menu (rename / delete) — Popup so it doesn't expand the row -->
+                                                    <Popup Grid.Column="1" IsOpen="{Binding IsMenuOpen, Mode=TwoWay}" StaysOpen="False"
+                                                           Placement="Bottom" PlacementTarget="{Binding ElementName=ChatMenuToggle}"
+                                                           AllowsTransparency="True" PopupAnimation="Fade" HorizontalOffset="-80">
+                                                        <Border Background="{DynamicResource CardBackgroundBrush}"
+                                                                BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                                                                CornerRadius="8" Padding="2" Margin="4">
+                                                            <Border.Effect>
+                                                                <DropShadowEffect Color="#000000" BlurRadius="12" ShadowDepth="2" Opacity="0.3"/>
+                                                            </Border.Effect>
+                                                            <StackPanel MinWidth="120">
+                                                                <Button Style="{StaticResource GhostButton}" HorizontalAlignment="Stretch"
+                                                                        HorizontalContentAlignment="Left" Padding="10,7"
+                                                                        Command="{Binding DataContext.AIAssistantVM.RenameChatCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                                        CommandParameter="{Binding}">
+                                                                    <StackPanel Orientation="Horizontal">
+                                                                        <TextBlock Text="&#xE8AC;" FontFamily="{StaticResource IconFont}" FontSize="12"
+                                                                                   Foreground="{DynamicResource SecondaryTextBrush}" Margin="0,0,8,0"/>
+                                                                        <TextBlock Text="Rename" FontSize="12" Foreground="{DynamicResource SecondaryTextBrush}"/>
+                                                                    </StackPanel>
+                                                                </Button>
+                                                                <Button Style="{StaticResource GhostButton}" HorizontalAlignment="Stretch"
+                                                                        HorizontalContentAlignment="Left" Padding="10,7"
+                                                                        Command="{Binding DataContext.AIAssistantVM.DeleteChatCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                                        CommandParameter="{Binding}">
+                                                                    <StackPanel Orientation="Horizontal">
+                                                                        <TextBlock Text="&#xE74D;" FontFamily="{StaticResource IconFont}" FontSize="12"
+                                                                                   Foreground="{DynamicResource ErrorBrush}" Margin="0,0,8,0"/>
+                                                                        <TextBlock Text="Delete" FontSize="12" Foreground="{DynamicResource ErrorBrush}"/>
+                                                                    </StackPanel>
+                                                                </Button>
+                                                            </StackPanel>
+                                                        </Border>
+                                                    </Popup>
+                                                </Grid>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
                         </ScrollViewer>
 
-                        <!-- Collapse Button -->
-                        <Border Grid.Row="1" Padding="8,12" BorderThickness="0,1,0,0"
+                        <!-- ── Bottom: Account section (like ChatGPT) ── -->
+                        <Border Grid.Row="2" Padding="8,10" BorderThickness="0,1,0,0"
                                 BorderBrush="{DynamicResource DividerBrush}">
                             <Button Style="{StaticResource GhostButton}" HorizontalAlignment="Stretch"
-                                    Command="{Binding ToggleSidebarCommand}">
+                                    HorizontalContentAlignment="Left" Padding="8,8"
+                                    Command="{Binding NavigateCommand}" CommandParameter="Account"
+                                    Cursor="Hand">
                                 <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="{StaticResource IconBack}" FontFamily="{StaticResource IconFont}" FontSize="13" Foreground="{DynamicResource IconPrimaryBrush}"/>
-                                    <TextBlock Text="  Collapse" FontSize="12" Margin="8,0,0,0"
-                                               Visibility="{Binding IsSidebarExpanded, Converter={StaticResource BoolVis}}"/>
+                                    <Border Width="32" Height="32" CornerRadius="16"
+                                            Background="{DynamicResource AccentSubtleBrush}" Margin="0,0,10,0">
+                                        <TextBlock Text="&#xE77B;" FontFamily="{StaticResource IconFont}" FontSize="14"
+                                                   HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                   Foreground="{DynamicResource AccentBrush}"/>
+                                    </Border>
+                                    <TextBlock Text="Account" FontSize="13" FontWeight="Medium" VerticalAlignment="Center"
+                                               Foreground="{DynamicResource SecondaryTextBrush}"/>
                                 </StackPanel>
                             </Button>
                         </Border>
                     </Grid>
+                </Border>
+
+                <!-- ═══════ Collapsed sidebar — toggle + new chat buttons ═══════ -->
+                <Border Grid.Column="0" Width="48" HorizontalAlignment="Left"
+                        Visibility="{Binding IsSidebarExpanded, Converter={StaticResource BoolCollapse}}">
+                    <StackPanel VerticalAlignment="Top" Margin="4,12,4,0">
+                        <Button Style="{StaticResource GhostButton}" Padding="8"
+                                Command="{Binding ToggleSidebarCommand}" ToolTip="Open sidebar">
+                            <TextBlock Text="&#xE89F;" FontFamily="{StaticResource IconFont}" FontSize="16"
+                                       Foreground="{DynamicResource IconPrimaryBrush}"/>
+                        </Button>
+                        <Button Style="{StaticResource GhostButton}" Padding="8" Margin="0,4,0,0"
+                                Command="{Binding AIAssistantVM.NewChatCommand}" ToolTip="New chat">
+                            <TextBlock Text="&#xE710;" FontFamily="{StaticResource IconFont}" FontSize="16"
+                                       Foreground="{DynamicResource AccentBrush}"/>
+                        </Button>
+                    </StackPanel>
                 </Border>
 
                 <!-- ═══════ PAGE CONTENT ═══════ -->

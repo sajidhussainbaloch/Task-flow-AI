@@ -3,11 +3,12 @@ using Microsoft.Extensions.Logging;
 using ZayFlow.App.Services;
 using ZayFlow.App.Services.AI.Contracts;
 using ZayFlow.App.Services.AI.Providers;
+using ZayFlow.App.Services.Assistant;
 
 namespace ZayFlow.App.Services.AI;
 
 /// <summary>
-/// Main AI service that orchestrates AI provider, token management, and response formatting.
+/// Main AI service that orchestrates Cloudflare-backed assistant turns, token management, and execution.
 /// </summary>
 public class AIService : IAIService
 {
@@ -17,12 +18,13 @@ public class AIService : IAIService
     private readonly IntentExecutionService _executionService;
     private readonly IAppPreferencesService _preferencesService;
     private readonly IActionAuditService _auditService;
+    private readonly IAssistantOrchestrator _assistantOrchestrator;
     private readonly ILogger<AIService> _logger;
 
     public string CurrentProvider => _currentProvider?.ProviderName ?? "None";
     public IReadOnlyList<ChatMessage> ConversationHistory => _conversationHistory.AsReadOnly();
-
     public int TokensUsedToday => _preferencesService.Get().TokensUsedToday;
+
     public int DailyTokenLimit
     {
         get
@@ -37,10 +39,11 @@ public class AIService : IAIService
     public string TokenTier => _preferencesService.Get().IsPremium ? "Premium" : "Free";
 
     public AIService(
-        GroqProvider groqProvider,
+        CloudflareProvider cloudflareProvider,
         IntentExecutionService executionService,
         IAppPreferencesService preferencesService,
         IActionAuditService auditService,
+        IAssistantOrchestrator assistantOrchestrator,
         ILogger<AIService> logger)
     {
         _logger = logger;
@@ -49,19 +52,19 @@ public class AIService : IAIService
         _executionService = executionService;
         _preferencesService = preferencesService;
         _auditService = auditService;
+        _assistantOrchestrator = assistantOrchestrator;
 
-        RegisterProvider(groqProvider);
+        RegisterProvider(cloudflareProvider);
 
         var preferences = _preferencesService.Get();
-
-        // Initialize Groq
-        if (!string.IsNullOrWhiteSpace(preferences.GroqApiKey))
+        if (!string.IsNullOrWhiteSpace(preferences.CloudflareApiToken)
+            && !string.IsNullOrWhiteSpace(preferences.CloudflareAccountId))
         {
-            groqProvider.Initialize(preferences.GroqApiKey);
-            _logger.LogInformation("Groq provider initialized");
+            cloudflareProvider.Initialize(BuildCloudflareConfig(preferences));
+            _logger.LogInformation("Cloudflare provider initialized");
         }
 
-        SwitchProvider("Groq (Free)");
+        SwitchProvider("Cloudflare");
     }
 
     public void RegisterProvider(IAIProvider provider)
@@ -70,7 +73,7 @@ public class AIService : IAIService
         if (_currentProvider == null)
         {
             _currentProvider = provider;
-            _logger.LogInformation($"Provider registered and set as current: {provider.ProviderName}");
+            _logger.LogInformation("Provider registered and set as current: {Provider}", provider.ProviderName);
         }
     }
 
@@ -80,56 +83,60 @@ public class AIService : IAIService
         {
             _currentProvider = provider;
             _preferencesService.Update(p => p.SelectedProvider = providerName);
-            _logger.LogInformation($"Switched to provider: {providerName}");
+            _logger.LogInformation("Switched to provider: {Provider}", providerName);
         }
         else
         {
-            _logger.LogWarning($"Provider not found: {providerName}");
+            _logger.LogWarning("Provider not found: {Provider}", providerName);
         }
     }
 
     public List<string> GetAvailableProviders() => _providers.Keys.ToList();
 
-    public async Task<ChatMessage> ProcessUserMessageAsync(string userMessage, bool bypassPrivacyConfirmation = false, CancellationToken ct = default)
+    public Task<ChatMessage> ProcessUserMessageAsync(string userMessage, bool bypassPrivacyConfirmation = false, CancellationToken ct = default)
     {
-        if (string.IsNullOrWhiteSpace(userMessage))
+        var preferences = _preferencesService.Get();
+        return ProcessAssistantTurnAsync(new AssistantTurnRequest
         {
-            return new ChatMessage
-            {
-                Content = "Please enter a message.",
-                Role = "assistant"
-            };
+            UserMessage = userMessage,
+            PrivacyMode = preferences.PrivacyMode,
+            BypassPrivacyConfirmation = bypassPrivacyConfirmation,
+            WorkspaceRoot = preferences.DefaultWorkspaceRoot,
+            UseLocalOcrFirst = preferences.UseLocalOcrFirst,
+            RecentMessages = ConversationHistory.ToList()
+        }, ct);
+    }
+
+    public async Task<ChatMessage> ProcessAssistantTurnAsync(AssistantTurnRequest request, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(request.UserMessage))
+        {
+            return new ChatMessage { Content = "Please enter a message.", Role = "assistant" };
         }
 
         if (_currentProvider == null)
         {
-            return new ChatMessage
-            {
-                Content = "No AI provider configured. Please configure DeepSeek API key in settings.",
-                Role = "assistant"
-            };
+            return new ChatMessage { Content = "No AI provider configured. Please configure Cloudflare in settings.", Role = "assistant" };
         }
 
         if (!CanUseAI)
         {
-            return new ChatMessage
-            {
-                Content = "You have no tokens remaining. Please upgrade to continue using AI features.",
-                Role = "assistant"
-            };
+            return new ChatMessage { Content = "You have no tokens remaining. Please upgrade to continue using AI features.", Role = "assistant" };
         }
 
         var preferences = _preferencesService.Get();
-        if (!bypassPrivacyConfirmation && preferences.PrivacyMode && LooksLikeSensitiveFileContentRequest(userMessage))
+        if (!request.BypassPrivacyConfirmation && preferences.PrivacyMode && LooksSensitive(request))
         {
             var privacyMessage = new ChatMessage
             {
-                Content = "Privacy mode is enabled. This request may send file content externally. Confirm to continue.",
+                Content = "Privacy mode is enabled. This request may send file or image content externally. Confirm to continue.",
                 Role = "assistant",
                 RequiredConfirmation = true,
-                ConfirmationMessage = "Send potentially sensitive file content to AI provider?",
+                ConfirmationMessage = "Send potentially sensitive file, image, or clipboard content to the AI provider?",
                 IsSensitiveContentRequest = true,
-                ExecutedIntent = "privacy_confirmation"
+                ExecutedIntent = "privacy_confirmation",
+                Attachments = request.Attachments.ToList(),
+                TurnMode = request.Attachments.Count > 0 ? AssistantTurnMode.Vision : AssistantTurnMode.Chat
             };
 
             _conversationHistory.Add(privacyMessage);
@@ -137,56 +144,57 @@ public class AIService : IAIService
             return privacyMessage;
         }
 
-        // Add user message to history
         var userMsg = new ChatMessage
         {
-            Content = userMessage,
-            Role = "user"
+            Content = request.UserMessage,
+            Role = "user",
+            Attachments = request.Attachments.ToList(),
+            TurnMode = request.Attachments.Count > 0 ? AssistantTurnMode.Vision : AssistantTurnMode.Chat
         };
         _conversationHistory.Add(userMsg);
 
         if (!TryDeductTokens(1))
         {
-            return new ChatMessage
-            {
-                Content = "Insufficient tokens for AI call.",
-                Role = "assistant"
-            };
+            return new ChatMessage { Content = "Insufficient tokens for AI call.", Role = "assistant" };
         }
 
-        // Get AI response
-        var aiResponse = await _currentProvider.SendChatMessageAsync(userMessage, ct);
-        aiResponse.TokenCost = NormalizeAiTokenCost(aiResponse, userMessage);
+        request.RecentMessages = _conversationHistory.ToList();
+        var turn = await _assistantOrchestrator.ProcessTurnAsync(request, ct).ConfigureAwait(false);
+        turn.TokenCost = NormalizeAiTokenCost(turn.TokenCost, request);
 
-        var additionalCost = Math.Max(0, aiResponse.TokenCost - 1);
+        var additionalCost = Math.Max(0, turn.TokenCost - 1);
         if (additionalCost > 0 && !TryDeductTokens(additionalCost))
         {
-            aiResponse.Success = false;
-            aiResponse.Message = "Insufficient tokens for this request size.";
-            aiResponse.Intent = "chat";
-            aiResponse.RequiresConfirmation = false;
-            aiResponse.TokenCost = 1;
+            turn.Message = "Insufficient tokens for this request size.";
+            turn.Intent = "chat";
+            turn.RequiresConfirmation = false;
+            turn.TokenCost = 1;
         }
 
-        // Create assistant message
-        var assistantMsg = new ChatMessage
+        var assistantMessage = new ChatMessage
         {
-            Content = aiResponse.Message,
+            Content = turn.Message,
             Role = "assistant",
-            ExecutedIntent = aiResponse.Intent,
-            TokenCost = aiResponse.TokenCost,
-            RequiredConfirmation = aiResponse.RequiresConfirmation,
-            ConfirmationMessage = aiResponse.ConfirmationMessage,
-            IntentParameters = aiResponse.Parameters
+            ExecutedIntent = turn.Intent,
+            TokenCost = turn.TokenCost,
+            RequiredConfirmation = turn.RequiresConfirmation,
+            ConfirmationMessage = turn.ConfirmationMessage,
+            IntentParameters = turn.Parameters,
+            IsSensitiveContentRequest = turn.IsSensitiveContentRequest,
+            TurnMode = turn.Mode,
+            ToolTraceSummary = turn.ToolTraceSummary,
+            Artifacts = turn.Artifacts,
+            Attachments = turn.Attachments,
+            ToolInvocations = turn.ToolInvocations,
+            CodeSession = turn.CodeSession,
+            RawCodeSession = turn.RawCodeSession
         };
 
-        _conversationHistory.Add(assistantMsg);
+        _conversationHistory.Add(assistantMessage);
+        await _auditService.LogAsync("AI", $"Provider={CurrentProvider}; Intent={turn.Intent}; Tokens={turn.TokenCost}; Mode={turn.Mode}", ct);
+        _logger.LogInformation("Processed assistant turn - Intent: {Intent}, Tokens: {Tokens}, Mode: {Mode}", turn.Intent, turn.TokenCost, turn.Mode);
 
-        await _auditService.LogAsync("AI", $"Provider={CurrentProvider}; Intent={aiResponse.Intent}; Tokens={aiResponse.TokenCost}", ct);
-
-        _logger.LogInformation($"Processed message - Intent: {aiResponse.Intent}, Tokens: {aiResponse.TokenCost}");
-
-        return assistantMsg;
+        return assistantMessage;
     }
 
     public async Task<ActionResult> ExecuteIntentAsync(ChatMessage assistantMessage, CancellationToken ct = default)
@@ -257,28 +265,42 @@ public class AIService : IAIService
         return text;
     }
 
+    public async Task<ImageGenerationResult> GenerateImageAsync(string prompt, string savePath, CancellationToken ct = default)
+    {
+        if (_currentProvider is not CloudflareProvider orProvider)
+        {
+            return new ImageGenerationResult { Success = false, Message = "Image generation requires the Cloudflare provider." };
+        }
+
+        if (!CanUseAI || !TryDeductTokens(3))
+        {
+            return new ImageGenerationResult { Success = false, Message = "Not enough tokens for image generation." };
+        }
+
+        var result = await orProvider.GenerateImageAsync(prompt, savePath, ct);
+        await _auditService.LogAsync("AI", $"Provider={CurrentProvider}; Intent=generate_image; Tokens=3", ct);
+        return result;
+    }
+
     public void ClearHistory()
     {
         _conversationHistory.Clear();
-        // Also clear the provider's conversation memory
-        if (_currentProvider is GroqProvider groq)
+        if (_currentProvider is CloudflareProvider orProvider)
         {
-            groq.ClearConversationHistory();
+            orProvider.ClearConversationHistory();
         }
+
         _logger.LogInformation("Conversation history cleared (service + provider)");
     }
 
-    /// <summary>
-    /// Inject a system-level note into the provider's conversation memory.
-    /// This lets the AI know about action results, so it can reference them.
-    /// </summary>
     public void AddSystemNote(string note)
     {
-        if (_currentProvider is GroqProvider groq)
+        if (_currentProvider is CloudflareProvider orProvider)
         {
-            groq.AddNote(note);
+            orProvider.AddNote(note);
         }
-        _logger.LogInformation($"System note added to AI memory: {note[..Math.Min(80, note.Length)]}");
+
+        _logger.LogInformation("System note added to AI memory: {Snippet}", note[..Math.Min(80, note.Length)]);
     }
 
     private bool TryDeductTokens(int amount)
@@ -299,19 +321,15 @@ public class AIService : IAIService
         return true;
     }
 
-    private static int NormalizeAiTokenCost(AIResponse response, string userMessage)
+    private static int NormalizeAiTokenCost(int tokenCost, AssistantTurnRequest request)
     {
-        var baseCost = response.TokenCost <= 0 ? 1 : response.TokenCost;
-        var intent = response.Intent?.Trim().ToLowerInvariant() ?? "chat";
-
-        if (intent.Contains("summar") && (intent.Contains("file") || userMessage.Contains(".pdf", StringComparison.OrdinalIgnoreCase) || userMessage.Contains(".docx", StringComparison.OrdinalIgnoreCase)))
+        var baseCost = tokenCost <= 0 ? 1 : tokenCost;
+        if (request.Attachments.Count > 0)
         {
-            return Math.Max(2, baseCost);
+            return Math.Max(3, baseCost);
         }
 
-        if (response.Parameters.TryGetValue("fileSizeKb", out var fileSizeObj)
-            && long.TryParse(fileSizeObj?.ToString(), out var fileSizeKb)
-            && fileSizeKb > 512)
+        if (!string.IsNullOrWhiteSpace(request.WorkspaceRoot) || request.UserMessage.Contains("code", StringComparison.OrdinalIgnoreCase))
         {
             return Math.Max(2, baseCost);
         }
@@ -319,11 +337,19 @@ public class AIService : IAIService
         return Math.Max(1, baseCost);
     }
 
-    private static bool LooksLikeSensitiveFileContentRequest(string message)
+    private static bool LooksSensitive(AssistantTurnRequest request)
     {
-        var lower = message.ToLowerInvariant();
-        var asksRead = lower.Contains("read ") || lower.Contains("summar") || lower.Contains("extract") || lower.Contains("analy") || lower.Contains("rewrite");
-        var mentionsFile = lower.Contains(".txt") || lower.Contains(".pdf") || lower.Contains(".docx") || lower.Contains("c:\\") || lower.Contains("d:\\") || lower.Contains("file");
+        if (request.Attachments.Count > 0)
+        {
+            return true;
+        }
+
+        var lower = request.UserMessage.ToLowerInvariant();
+        var asksRead = lower.Contains("read ") || lower.Contains("summar") || lower.Contains("extract") || lower.Contains("analy") || lower.Contains("rewrite") || lower.Contains("screenshot");
+        var mentionsFile = lower.Contains(".txt") || lower.Contains(".pdf") || lower.Contains(".docx") || lower.Contains("c:\\") || lower.Contains("d:\\") || lower.Contains("file") || lower.Contains("image") || lower.Contains("clipboard");
         return asksRead && mentionsFile;
     }
+
+    private static string BuildCloudflareConfig(AppPreferences preferences)
+        => $"{preferences.CloudflareApiToken}|{preferences.CloudflareAccountId}|{preferences.PreferredChatModel}";
 }

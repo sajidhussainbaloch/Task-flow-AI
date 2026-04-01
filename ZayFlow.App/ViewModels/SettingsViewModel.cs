@@ -16,7 +16,7 @@ public class SettingsViewModel : ViewModelBase
     private readonly WindowService _windowService;
     private readonly IAppPreferencesService _preferencesService;
     private readonly IAIService? _aiService;
-    private readonly GroqProvider? _groqProvider;
+    private readonly CloudflareProvider? _cloudflareProvider;
     private readonly IActionAuditService? _actionAuditService;
     private readonly ILogger<SettingsViewModel>? _logger;
 
@@ -46,9 +46,18 @@ public class SettingsViewModel : ViewModelBase
     private bool _privacyMode = true;
     private bool _disableFileUpload;
     private bool _requireFileUploadConfirmation = true;
+    private string _defaultWorkspaceRoot = string.Empty;
+    private bool _enableImagePaste = true;
+    private bool _enableStreamingResponses = true;
+    private bool _useLocalOcrFirst = true;
+    private string _preferredChatModel = CloudflareProvider.DefaultChatModel;
+    private string _preferredCodingModel = CloudflareProvider.DefaultCodeModel;
+    private string _preferredVisionModel = CloudflareProvider.DefaultVisionModel;
+    private bool _enableArtifactPane = true;
     private int _tokenWarningThreshold = 10;
-    private string _selectedProvider = "Groq (Free)";
-    private string _groqApiKey = string.Empty;
+    private string _selectedProvider = "Cloudflare";
+    private string _cloudflareApiToken = string.Empty;
+    private string _cloudflareAccountId = string.Empty;
     private bool _scheduledTasksEnabled;
     private bool _enableAutomationEngine = true;
     private bool _enableBackgroundTasks = true;
@@ -65,7 +74,7 @@ public class SettingsViewModel : ViewModelBase
         WindowService windowService,
         IAppPreferencesService preferencesService,
         IAIService? aiService = null,
-        GroqProvider? groqProvider = null,
+        CloudflareProvider? cloudflareProvider = null,
         IActionAuditService? actionAuditService = null,
         ILogger<SettingsViewModel>? logger = null)
     {
@@ -74,7 +83,7 @@ public class SettingsViewModel : ViewModelBase
         _windowService = windowService;
         _preferencesService = preferencesService;
         _aiService = aiService;
-        _groqProvider = groqProvider;
+        _cloudflareProvider = cloudflareProvider;
         _actionAuditService = actionAuditService;
         _logger = logger;
 
@@ -92,7 +101,7 @@ public class SettingsViewModel : ViewModelBase
         AccentColors = new ObservableCollection<string> { "#6366F1", "#8B5CF6", "#EC4899", "#EF4444", "#F59E0B", "#10B981", "#3B82F6", "#06B6D4" };
         
         // Initialize AI providers
-        AvailableProviders = new ObservableCollection<string> { "Groq (Free)" };
+        AvailableProviders = new ObservableCollection<string> { "Cloudflare" };
 
         ResetMemoryCommand = new RelayCommand(_ => OnResetMemory());
         UpgradeCommand = new RelayCommand(_ => OnUpgrade());
@@ -124,7 +133,7 @@ public class SettingsViewModel : ViewModelBase
     public int UsedTokens => _aiService?.TokensUsedToday ?? 0;
     public string TokenTier => _aiService?.TokenTier ?? "Free";
 
-    // ── General ──
+    // â”€â”€ General â”€â”€
     public bool StartOnBoot
     {
         get => _startOnBoot;
@@ -169,7 +178,7 @@ public class SettingsViewModel : ViewModelBase
         set => SetProperty(ref _autoUpdate, value);
     }
 
-    // ── Appearance ──
+    // â”€â”€ Appearance â”€â”€
     public string SelectedTheme
     {
         get => _selectedTheme;
@@ -212,7 +221,7 @@ public class SettingsViewModel : ViewModelBase
         set => SetProperty(ref _animationsEnabled, value);
     }
 
-    // ── Automation ──
+    // â”€â”€ Automation â”€â”€
     public string DefaultActionFolder
     {
         get => _defaultActionFolder;
@@ -237,7 +246,7 @@ public class SettingsViewModel : ViewModelBase
         set => SetProperty(ref _defaultGroupingStrategy, value);
     }
 
-    // ── AI & Tokens ──
+    // â”€â”€ AI & Tokens â”€â”€
     public string SelectedProvider
     {
         get => _selectedProvider;
@@ -251,18 +260,26 @@ public class SettingsViewModel : ViewModelBase
         }
     }
 
-    public string GroqApiKey
+    public string CloudflareApiToken
     {
-        get => _groqApiKey;
+        get => _cloudflareApiToken;
         set
         {
-            if (SetProperty(ref _groqApiKey, value))
+            if (SetProperty(ref _cloudflareApiToken, value))
             {
-                if (_groqProvider != null && !string.IsNullOrWhiteSpace(value))
-                {
-                    _groqProvider.Initialize(value);
-                    _notificationService.ShowSuccess("API Key Configured", "Groq provider is now ready");
-                }
+                InitializeCloudflare();
+            }
+        }
+    }
+
+    public string CloudflareAccountId
+    {
+        get => _cloudflareAccountId;
+        set
+        {
+            if (SetProperty(ref _cloudflareAccountId, value))
+            {
+                InitializeCloudflare();
             }
         }
     }
@@ -297,6 +314,54 @@ public class SettingsViewModel : ViewModelBase
         set => SetProperty(ref _requireFileUploadConfirmation, value);
     }
 
+    public string DefaultWorkspaceRoot
+    {
+        get => _defaultWorkspaceRoot;
+        set => SetProperty(ref _defaultWorkspaceRoot, value);
+    }
+
+    public bool EnableImagePaste
+    {
+        get => _enableImagePaste;
+        set => SetProperty(ref _enableImagePaste, value);
+    }
+
+    public bool EnableStreamingResponses
+    {
+        get => _enableStreamingResponses;
+        set => SetProperty(ref _enableStreamingResponses, value);
+    }
+
+    public bool UseLocalOcrFirst
+    {
+        get => _useLocalOcrFirst;
+        set => SetProperty(ref _useLocalOcrFirst, value);
+    }
+
+    public string PreferredCodingModel
+    {
+        get => _preferredCodingModel;
+        set => SetProperty(ref _preferredCodingModel, value);
+    }
+
+    public string PreferredChatModel
+    {
+        get => _preferredChatModel;
+        set => SetProperty(ref _preferredChatModel, value);
+    }
+
+    public string PreferredVisionModel
+    {
+        get => _preferredVisionModel;
+        set => SetProperty(ref _preferredVisionModel, value);
+    }
+
+    public bool EnableArtifactPane
+    {
+        get => _enableArtifactPane;
+        set => SetProperty(ref _enableArtifactPane, value);
+    }
+
     public bool ScheduledTasksEnabled
     {
         get => _scheduledTasksEnabled;
@@ -327,7 +392,7 @@ public class SettingsViewModel : ViewModelBase
         set => SetProperty(ref _tokenWarningThreshold, value);
     }
 
-    // ── Account ──
+    // â”€â”€ Account â”€â”€
     public string UserEmail
     {
         get => _userEmail;
@@ -366,6 +431,14 @@ public class SettingsViewModel : ViewModelBase
             p.PrivacyMode = PrivacyMode;
             p.DisableFileUpload = DisableFileUpload;
             p.RequireFileUploadConfirmation = RequireFileUploadConfirmation;
+            p.DefaultWorkspaceRoot = DefaultWorkspaceRoot;
+            p.EnableImagePaste = EnableImagePaste;
+            p.EnableStreamingResponses = EnableStreamingResponses;
+            p.UseLocalOcrFirst = UseLocalOcrFirst;
+            p.PreferredChatModel = PreferredChatModel;
+            p.PreferredCodingModel = PreferredCodingModel;
+            p.PreferredVisionModel = PreferredVisionModel;
+            p.EnableArtifactPane = EnableArtifactPane;
             p.RequireExecutionConfirmation = ConfirmBeforeExecute;
             p.EnableAutomationEngine = EnableAutomationEngine;
             p.EnableBackgroundTasks = EnableBackgroundTasks;
@@ -376,19 +449,24 @@ public class SettingsViewModel : ViewModelBase
             p.TokenWarningThreshold = TokenWarningThreshold;
             p.SelectedProvider = SelectedProvider;
             p.SelectedLanguage = SelectedLanguage;
-            p.GroqApiKey = GroqApiKey;
+            p.CloudflareApiToken = CloudflareApiToken;
+            p.CloudflareAccountId = CloudflareAccountId;
             p.SelectedTheme = SelectedTheme;
             p.AccentColor = AccentColor;
             p.FontSizeScale = FontScale;
         });
 
-        InitializeGroq();
+        InitializeCloudflare();
         _aiService?.SwitchProvider(SelectedProvider);
 
         OnPropertyChanged(nameof(RemainingTokens));
         OnPropertyChanged(nameof(UsedTokens));
         OnPropertyChanged(nameof(DailyTokenLimit));
         OnPropertyChanged(nameof(TokenTier));
+        if (!string.IsNullOrWhiteSpace(CloudflareApiToken) && !string.IsNullOrWhiteSpace(CloudflareAccountId))
+        {
+            _notificationService.ShowSuccess("Cloudflare Ready", "Cloudflare Workers AI is configured.");
+        }
         _notificationService.ShowSuccess("Settings Saved", "Your preferences have been saved.");
     }
 
@@ -401,6 +479,14 @@ public class SettingsViewModel : ViewModelBase
         PrivacyMode = p.PrivacyMode;
         DisableFileUpload = p.DisableFileUpload;
         RequireFileUploadConfirmation = p.RequireFileUploadConfirmation;
+        DefaultWorkspaceRoot = p.DefaultWorkspaceRoot;
+        EnableImagePaste = p.EnableImagePaste;
+        EnableStreamingResponses = p.EnableStreamingResponses;
+        UseLocalOcrFirst = p.UseLocalOcrFirst;
+        PreferredChatModel = p.PreferredChatModel;
+        PreferredCodingModel = p.PreferredCodingModel;
+        PreferredVisionModel = p.PreferredVisionModel;
+        EnableArtifactPane = p.EnableArtifactPane;
         ConfirmBeforeExecute = p.RequireExecutionConfirmation;
         EnableAutomationEngine = p.EnableAutomationEngine;
         EnableBackgroundTasks = p.EnableBackgroundTasks;
@@ -411,7 +497,8 @@ public class SettingsViewModel : ViewModelBase
         TokenWarningThreshold = p.TokenWarningThreshold;
         SelectedProvider = p.SelectedProvider;
         SelectedLanguage = p.SelectedLanguage;
-        GroqApiKey = p.GroqApiKey;
+        CloudflareApiToken = p.CloudflareApiToken;
+        CloudflareAccountId = p.CloudflareAccountId;
         SelectedTheme = p.SelectedTheme;
         AccentColor = p.AccentColor;
         FontScale = p.FontSizeScale;
@@ -453,13 +540,14 @@ public class SettingsViewModel : ViewModelBase
         _notificationService.ShowWarning("Settings", "Settings reset to defaults.");
     }
 
-    private void InitializeGroq()
+    private void InitializeCloudflare()
     {
-        if (_groqProvider == null) return;
+        if (_cloudflareProvider == null) return;
 
-        if (!string.IsNullOrWhiteSpace(GroqApiKey))
+        if (!string.IsNullOrWhiteSpace(CloudflareApiToken)
+            && !string.IsNullOrWhiteSpace(CloudflareAccountId))
         {
-            _groqProvider.Initialize(GroqApiKey);
+            _cloudflareProvider.Initialize($"{CloudflareApiToken}|{CloudflareAccountId}|{PreferredChatModel}");
         }
     }
 }

@@ -239,24 +239,54 @@
             <TextBlock Text="AI &amp; Tokens" Style="{StaticResource HeadingMD}" Margin="0,0,0,14"/>
             <Border Style="{StaticResource PremiumCard}" Margin="0,0,0,24">
                 <StackPanel>
-                    <!-- Groq API Key -->
+                    <!-- Cloudflare Token -->
                     <Grid Margin="0,0,0,18">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="300"/>
                         </Grid.ColumnDefinitions>
                         <StackPanel>
-                            <TextBlock Text="Groq API Key" FontWeight="SemiBold" FontSize="14"
+                            <TextBlock Text="Cloudflare API Token" FontWeight="SemiBold" FontSize="14"
                                        Foreground="{DynamicResource PrimaryTextBrush}" Margin="0,0,0,4"/>
                             <TextBlock FontSize="12" Foreground="{DynamicResource TertiaryTextBrush}">
-                                <Run Text="Free AI (Llama 3.3 70B). Get key at:"/>
-                                <Hyperlink NavigateUri="https://console.groq.com" RequestNavigate="Hyperlink_RequestNavigate" Foreground="{DynamicResource AccentBrush}">
-                                    <Run Text="console.groq.com"/>
+                                <Run Text="Workers AI token with Read + Edit permissions. Docs:"/>
+                                <Hyperlink NavigateUri="https://developers.cloudflare.com/workers-ai/get-started/rest-api/" RequestNavigate="Hyperlink_RequestNavigate" Foreground="{DynamicResource AccentBrush}">
+                                    <Run Text="workers-ai REST API"/>
                                 </Hyperlink>
                             </TextBlock>
                         </StackPanel>
                         <TextBox Grid.Column="1" Style="{StaticResource PremiumTextBox}"
-                                 Text="{Binding GroqApiKey, UpdateSourceTrigger=PropertyChanged}"/>
+                                 Text="{Binding CloudflareApiToken, UpdateSourceTrigger=PropertyChanged}"/>
+                    </Grid>
+
+                    <Grid Margin="0,0,0,18">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="300"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock Text="Cloudflare Account ID" FontWeight="SemiBold" FontSize="14"
+                                       Foreground="{DynamicResource PrimaryTextBrush}" Margin="0,0,0,4"/>
+                            <TextBlock Text="Use the same account ID shown on the Workers AI REST API page in Cloudflare." FontSize="12"
+                                       Foreground="{DynamicResource TertiaryTextBrush}"/>
+                        </StackPanel>
+                        <TextBox Grid.Column="1" Style="{StaticResource PremiumTextBox}"
+                                 Text="{Binding CloudflareAccountId, UpdateSourceTrigger=PropertyChanged}"/>
+                    </Grid>
+
+                    <Grid Margin="0,0,0,18">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="300"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock Text="Default workspace root" FontWeight="SemiBold" FontSize="14"
+                                       Foreground="{DynamicResource PrimaryTextBrush}" Margin="0,0,0,4"/>
+                            <TextBlock Text="Optional root folder for code-aware prompts and diff previews" FontSize="12"
+                                       Foreground="{DynamicResource TertiaryTextBrush}"/>
+                        </StackPanel>
+                        <TextBox Grid.Column="1" Style="{StaticResource PremiumTextBox}"
+                                 Text="{Binding DefaultWorkspaceRoot, UpdateSourceTrigger=PropertyChanged}"/>
                     </Grid>
 
                     <!-- Show tokens -->
@@ -273,6 +303,111 @@
                         </StackPanel>
                         <ToggleButton Grid.Column="1" Style="{StaticResource ToggleSwitch}"
                                       IsChecked="{Binding ShowRemainingTokens}"/>
+                    </Grid>
+
+                    <Grid Margin="0,0,0,18">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock Text="Enable image paste" FontWeight="SemiBold" FontSize="14"
+                                       Foreground="{DynamicResource PrimaryTextBrush}" Margin="0,0,0,4"/>
+                            <TextBlock Text="Allow Ctrl+V clipboard images and drag-drop image attachments in chat" FontSize="12"
+                                       Foreground="{DynamicResource TertiaryTextBrush}"/>
+                        </StackPanel>
+                        <ToggleButton Grid.Column="1" Style="{StaticResource ToggleSwitch}"
+                                      IsChecked="{Binding EnableImagePaste}"/>
+                    </Grid>
+
+                    <Grid Margin="0,0,0,18">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock Text="Enable streaming responses" FontWeight="SemiBold" FontSize="14"
+                                       Foreground="{DynamicResource PrimaryTextBrush}" Margin="0,0,0,4"/>
+                            <TextBlock Text="Prepare the assistant UI for streaming tool and token updates" FontSize="12"
+                                       Foreground="{DynamicResource TertiaryTextBrush}"/>
+                        </StackPanel>
+                        <ToggleButton Grid.Column="1" Style="{StaticResource ToggleSwitch}"
+                                      IsChecked="{Binding EnableStreamingResponses}"/>
+                    </Grid>
+
+                    <Grid Margin="0,0,0,18">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock Text="Use local OCR first" FontWeight="SemiBold" FontSize="14"
+                                       Foreground="{DynamicResource PrimaryTextBrush}" Margin="0,0,0,4"/>
+                            <TextBlock Text="Run local OCR on pasted images before sending anything to Cloudflare" FontSize="12"
+                                       Foreground="{DynamicResource TertiaryTextBrush}"/>
+                        </StackPanel>
+                        <ToggleButton Grid.Column="1" Style="{StaticResource ToggleSwitch}"
+                                      IsChecked="{Binding UseLocalOcrFirst}"/>
+                    </Grid>
+
+                    <Grid Margin="0,0,0,18">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="300"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock Text="Preferred chat model" FontWeight="SemiBold" FontSize="14"
+                                       Foreground="{DynamicResource PrimaryTextBrush}" Margin="0,0,0,4"/>
+                            <TextBlock Text="Fast day-to-day assistant model. Use a smaller model here to keep the app responsive." FontSize="12"
+                                       Foreground="{DynamicResource TertiaryTextBrush}"/>
+                        </StackPanel>
+                        <TextBox Grid.Column="1" Style="{StaticResource PremiumTextBox}"
+                                 Text="{Binding PreferredChatModel, UpdateSourceTrigger=PropertyChanged}"/>
+                    </Grid>
+
+                    <Grid Margin="0,0,0,18">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="300"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock Text="Preferred coding model" FontWeight="SemiBold" FontSize="14"
+                                       Foreground="{DynamicResource PrimaryTextBrush}" Margin="0,0,0,4"/>
+                            <TextBlock Text="High-quality model for planning, code generation, and diff proposals" FontSize="12"
+                                       Foreground="{DynamicResource TertiaryTextBrush}"/>
+                        </StackPanel>
+                        <TextBox Grid.Column="1" Style="{StaticResource PremiumTextBox}"
+                                 Text="{Binding PreferredCodingModel, UpdateSourceTrigger=PropertyChanged}"/>
+                    </Grid>
+
+                    <Grid Margin="0,0,0,18">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="300"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock Text="Preferred vision model" FontWeight="SemiBold" FontSize="14"
+                                       Foreground="{DynamicResource PrimaryTextBrush}" Margin="0,0,0,4"/>
+                            <TextBlock Text="Vision/OCR reasoning model for screenshots, images, and pasted code" FontSize="12"
+                                       Foreground="{DynamicResource TertiaryTextBrush}"/>
+                        </StackPanel>
+                        <TextBox Grid.Column="1" Style="{StaticResource PremiumTextBox}"
+                                 Text="{Binding PreferredVisionModel, UpdateSourceTrigger=PropertyChanged}"/>
+                    </Grid>
+
+                    <Grid Margin="0,0,0,18">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock Text="Enable artifact pane" FontWeight="SemiBold" FontSize="14"
+                                       Foreground="{DynamicResource PrimaryTextBrush}" Margin="0,0,0,4"/>
+                            <TextBlock Text="Show the dedicated preview panel for code, diff, OCR, and image artifacts" FontSize="12"
+                                       Foreground="{DynamicResource TertiaryTextBrush}"/>
+                        </StackPanel>
+                        <ToggleButton Grid.Column="1" Style="{StaticResource ToggleSwitch}"
+                                      IsChecked="{Binding EnableArtifactPane}"/>
                     </Grid>
 
                     <!-- Offline intelligence -->

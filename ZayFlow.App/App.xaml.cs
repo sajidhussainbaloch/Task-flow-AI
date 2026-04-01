@@ -9,6 +9,8 @@ using ZayFlow.App.Services.AI;
 using ZayFlow.App.Services.AI.Contracts;
 using ZayFlow.App.Services.AI.Handlers;
 using ZayFlow.App.Services.AI.Providers;
+using ZayFlow.App.Services.Assistant;
+using ZayFlow.App.Services.CodeGeneration.Verification;
 using ZayFlow.App.ViewModels;
 using ZayFlow.Backend.Services;
 using ZayFlow.Core.Abstractions;
@@ -42,7 +44,7 @@ public partial class App : Application
             _trayIconService = provider.GetRequiredService<TrayIconService>();
             _trayIconService.Initialize();
 
-            logger.LogInformation("ZayFlow launched — running in system tray");
+            logger.LogInformation("ZayFlow launched Ã¢â‚¬â€ running in system tray");
         }
         catch (Exception ex)
         {
@@ -121,6 +123,53 @@ public partial class App : Application
         services.AddSingleton<WindowService>();
         services.AddSingleton<IAppPreferencesService, AppPreferencesService>();
 
+        // Assistant orchestrator & supporting services
+        services.AddSingleton<IWorkspaceContextService, WorkspaceContextService>();
+        services.AddSingleton<ICodeContextBuilder, CodeContextBuilder>();
+        services.AddSingleton<ICodeDiffService, CodeDiffService>();
+        services.AddSingleton<ICodeEditPlanner, CodeEditPlanner>();
+        services.AddSingleton<ICodeApplyService, CodeApplyService>();
+        services.AddSingleton<IImagePreprocessService, ImagePreprocessService>();
+        services.AddSingleton<IOcrService, PowerShellOcrService>();
+        services.AddSingleton<IVisionAnalysisService, VisionAnalysisService>();
+        services.AddSingleton<IClipboardAttachmentService, ClipboardAttachmentService>();
+
+        // Code Generation Engine (layered pipeline)
+        services.AddSingleton<ZayFlow.App.Services.CodeGeneration.UnderstandingService>();
+        services.AddSingleton<ZayFlow.App.Services.CodeGeneration.PlanningService>();
+        services.AddSingleton<ZayFlow.App.Services.CodeGeneration.GenerationService>();
+        // Phase 2: per-category static validators
+        services.AddSingleton<ZayFlow.App.Services.CodeGeneration.Verification.SyntaxValidatorService>();
+        services.AddSingleton<ZayFlow.App.Services.CodeGeneration.Verification.DependencyValidatorService>();
+        services.AddSingleton<ZayFlow.App.Services.CodeGeneration.Verification.LogicValidatorService>();
+        // Phase 3: framework-aware validator + project intelligence
+        services.AddSingleton<ZayFlow.App.Services.CodeGeneration.Verification.FrameworkValidatorService>();
+        services.AddSingleton<ZayFlow.App.Services.CodeGeneration.Templates.FrameworkTemplateCatalog>();
+        services.AddSingleton<ZayFlow.App.Services.CodeGeneration.Intelligence.ProjectIntelligenceService>();
+        services.AddSingleton<ZayFlow.App.Services.CodeGeneration.Memory.ICodeEngineMemoryService,
+            ZayFlow.App.Services.CodeGeneration.Memory.CodeEngineMemoryService>();
+        services.AddSingleton<ZayFlow.App.Services.CodeGeneration.VerificationService>();
+        services.AddSingleton<ZayFlow.App.Services.CodeGeneration.ImprovementService>();
+        services.AddSingleton<ZayFlow.App.Services.CodeGeneration.OutputAssembler>();
+        services.AddSingleton<CodeGenerationLoopPolicy>();
+        services.AddSingleton<CodeGenerationScenarioValidator>();
+        services.AddSingleton<ZayFlow.App.Services.CodeGeneration.CodeGenerationOrchestrator>();
+
+        // Phase 2: Advanced AI Services
+        services.AddSingleton<ZayFlow.App.Services.AI.CodeReviewService>();
+        services.AddSingleton<ZayFlow.App.Services.AI.RefactorService>();
+        services.AddSingleton<ZayFlow.App.Services.AI.TaskDecompositionService>();
+
+        // Phase 3: Autonomous Agent System
+        services.AddSingleton<ZayFlow.App.Services.CodeGeneration.Agent.PlanModeService>();
+        services.AddSingleton<ZayFlow.App.Services.CodeGeneration.Agent.RetryOrchestrationService>();
+        services.AddSingleton<ZayFlow.App.Services.CodeGeneration.Notes.WorkflowNotesService>();
+        services.AddSingleton<ZayFlow.App.Services.CodeGeneration.Notes.FailureGuidanceService>();
+        services.AddSingleton<ZayFlow.App.Services.CodeGeneration.Checkpointing.WorkflowCheckpointService>();
+        services.AddSingleton<ZayFlow.App.Services.CodeGeneration.Checkpointing.AuditTrailService>();
+
+        services.AddSingleton<IAssistantOrchestrator, AssistantOrchestrator>();
+
         // AI Services
         services.AddSingleton<HttpClient>();  // Register HttpClient for AI providers
         services.AddSingleton<IFileActionService, FileActionService>();
@@ -128,6 +177,7 @@ public partial class App : Application
         services.AddSingleton<IActionAuditService, ActionAuditService>();
         services.AddSingleton<DocumentCreationService>();
         services.AddSingleton<DownloadManager>();
+        services.AddSingleton<ProjectBootstrapService>();
         services.AddSingleton<IntentExecutionService>();
         services.AddSingleton<IAIService, AIService>();
 
@@ -143,9 +193,9 @@ public partial class App : Application
         services.AddSingleton<IFileIntelligenceService, FileIntelligenceService>();
         services.AddSingleton<INotesService, NotesService>();
         services.AddSingleton<IInsightsService, InsightsService>();
-        // Register AI providers
-        services.AddSingleton<GroqProvider>();
-        services.AddSingleton<IAIProvider>(sp => sp.GetRequiredService<GroqProvider>());
+        // Register AI provider
+        services.AddSingleton<CloudflareProvider>();
+        services.AddSingleton<IAIProvider>(sp => sp.GetRequiredService<CloudflareProvider>());
 
         // ViewModels - use Singleton so the same instance is reused
         services.AddSingleton<MainViewModel>();  // Keep for legacy/backend integration
@@ -192,3 +242,4 @@ public partial class App : Application
         => _serviceProvider?.GetRequiredService<T>()
            ?? throw new InvalidOperationException("Service provider not initialized");
 }
+

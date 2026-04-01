@@ -63,7 +63,9 @@ public class MarkdownViewer : RichTextBox
     {
         if (d is MarkdownViewer viewer)
         {
-            viewer.Document = BuildDocument(e.NewValue?.ToString() ?? string.Empty);
+            var doc = BuildDocument(e.NewValue?.ToString() ?? string.Empty);
+            doc.SetResourceReference(FlowDocument.ForegroundProperty, "PrimaryTextBrush");
+            viewer.Document = doc;
         }
     }
 

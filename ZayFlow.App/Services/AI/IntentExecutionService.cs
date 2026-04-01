@@ -5,6 +5,7 @@ using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
 using ZayFlow.App.Services.AI.Contracts;
 using ZayFlow.App.Services.AI.Handlers;
+using ZayFlow.App.Services.Assistant;
 
 namespace ZayFlow.App.Services.AI;
 
@@ -18,6 +19,7 @@ public class IntentExecutionService
     private readonly DocumentCreationService _docService;
     private readonly ILogger<IntentExecutionService> _logger;
     private readonly DownloadManager _downloadManager;
+    private readonly ProjectBootstrapService _projectBootstrapService;
     private IAIService? _aiService;
     private NotificationService? _notificationService;
 
@@ -40,13 +42,14 @@ public class IntentExecutionService
         Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData)
     };
 
-    public IntentExecutionService(IFileActionService fileService, ISystemActionService systemService, DocumentCreationService docService, ILogger<IntentExecutionService> logger, DownloadManager downloadManager)
+    public IntentExecutionService(IFileActionService fileService, ISystemActionService systemService, DocumentCreationService docService, ILogger<IntentExecutionService> logger, DownloadManager downloadManager, ProjectBootstrapService projectBootstrapService)
     {
         _fileService = fileService;
         _systemService = systemService;
         _docService = docService;
         _logger = logger;
         _downloadManager = downloadManager;
+        _projectBootstrapService = projectBootstrapService ?? throw new ArgumentNullException(nameof(projectBootstrapService));
     }
 
     /// <summary>Late-bind AI service to avoid circular DI.</summary>
@@ -80,6 +83,28 @@ public class IntentExecutionService
         _progressReporter?.Report(new ActionProgress { Status = status, Percent = percent, Icon = icon });
     }
 
+    private static List<string> ParseStringList(object? value)
+    {
+        if (value is IEnumerable<string> stringValues)
+            return stringValues.Where(item => !string.IsNullOrWhiteSpace(item)).ToList();
+
+        if (value is System.Collections.IEnumerable enumerable && value is not string)
+        {
+            var results = new List<string>();
+            foreach (var item in enumerable)
+            {
+                var text = item?.ToString();
+                if (!string.IsNullOrWhiteSpace(text))
+                    results.Add(text);
+            }
+
+            return results;
+        }
+
+        var single = value?.ToString();
+        return string.IsNullOrWhiteSpace(single) ? new List<string>() : new List<string> { single };
+    }
+
     /// <summary>
     /// Generates a detailed human-readable preview of what an action will do BEFORE executing it.
     /// Used for destructive/confirmation-required intents to build user trust.
@@ -100,6 +125,7 @@ public class IntentExecutionService
                 "rename_files" => GenerateRenamePreview(parameters),
                 "ai_bulk_rename" => GenerateBulkRenamePreview(parameters),
                 "secure_delete" => GenerateDeletePreview(parameters),
+                "run_command" => GenerateRunCommandPreview(parameters),
                 _ => string.Empty
             };
         }
@@ -215,6 +241,29 @@ public class IntentExecutionService
         var totalSizeStr = totalSize < 1048576 ? $"{totalSize / 1024}KB" : $"{totalSize / 1048576}MB";
         sb.AppendLine($"\n📊 Total: {files.Count} files ({totalSizeStr})");
         return sb.ToString();
+    }
+
+    private string GenerateRunCommandPreview(Dictionary<string, object> parameters)
+    {
+        var command = parameters.TryGetValue("command", out var cmd) ? cmd?.ToString() ?? string.Empty : string.Empty;
+        var shell = parameters.TryGetValue("shell", out var shellObj) ? shellObj?.ToString() ?? "powershell" : "powershell";
+        var workingDirectory = parameters.TryGetValue("workingDirectory", out var wd) ? wd?.ToString() ?? string.Empty : string.Empty;
+        var frameworkId = parameters.TryGetValue("frameworkId", out var framework) ? framework?.ToString() ?? string.Empty : string.Empty;
+        var expectedArtifacts = parameters.TryGetValue("expectedArtifacts", out var expectedObj)
+            ? ParseStringList(expectedObj)
+            : new List<string>();
+
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine($"⚙️ Command: {command}");
+        sb.AppendLine($"Shell: {shell}");
+        if (!string.IsNullOrWhiteSpace(workingDirectory))
+            sb.AppendLine($"Working directory: {workingDirectory}");
+        if (!string.IsNullOrWhiteSpace(frameworkId))
+            sb.AppendLine($"Framework: {frameworkId}");
+        if (expectedArtifacts.Count > 0)
+            sb.AppendLine($"Expected artifacts: {string.Join(", ", expectedArtifacts)}");
+
+        return sb.ToString().TrimEnd();
     }
 
     private string GenerateCleanTempPreview()
@@ -376,6 +425,7 @@ public class IntentExecutionService
                 "smart_cleanup_schedule" => await ExecuteSmartCleanupScheduleAsync(response.Parameters, ct),
                 "visual_analytics" => await ExecuteVisualAnalyticsAsync(response.Parameters, ct),
                 "create_file" => await ExecuteCreateFileAsync(response.Parameters, response.Message, ct),
+                "create_project" => await ExecuteCreateProjectAsync(response.Parameters, response.Message, ct),
                 "edit_file" => await ExecuteEditFileAsync(response.Parameters, response.Message, ct),
                 "search_web" => await ExecuteSearchWebAsync(response.Parameters, ct),
                 "run_command" => await ExecuteRunCommandAsync(response.Parameters, ct),
@@ -507,7 +557,8 @@ public class IntentExecutionService
                     response.Parameters.GetValueOrDefault("category", "all")?.ToString() ?? "all", ct), "HubHandler"),
 
                 "chat" => new ActionResult { Success = true, Message = response.Message },
-                _ => new ActionResult { Success = false, Message = $"Unknown intent: {response.Intent}" }
+                "generate_image" => await ExecuteGenerateImageAsync(response.Parameters, ct),
+                _ => await HandleUnknownIntentAsync(response, ct)
             };
         }
         catch (Exception ex)
@@ -515,6 +566,148 @@ public class IntentExecutionService
             _logger.LogError($"Intent execution error: {ex.Message}");
             return new ActionResult { Success = false, Message = $"Execution error: {ex.Message}" };
         }
+    }
+
+    /// <summary>
+    /// Handles unknown intents by inferring the correct intent from message context.
+    /// When the AI returns a category name (DEV, UTILS, etc.) instead of a specific intent,
+    /// this scans the message for keywords to find and re-dispatch the right handler.
+    /// </summary>
+    private async Task<ActionResult> HandleUnknownIntentAsync(AIResponse response, CancellationToken ct)
+    {
+        var rawIntent = response.Intent?.Trim() ?? "";
+
+        // Build context string from message + parameter values for keyword matching
+        var context = (response.Message ?? "").ToLowerInvariant();
+        if (response.Parameters != null)
+        {
+            foreach (var kv in response.Parameters)
+                context += " " + (kv.Value?.ToString() ?? "").ToLowerInvariant();
+        }
+
+        // Try to infer the correct intent from context keywords
+        var inferredIntent = InferIntentFromContext(context);
+        if (inferredIntent != null)
+        {
+            _logger.LogWarning("Inferred intent '{Inferred}' from unknown '{Unknown}' via context keywords", inferredIntent, rawIntent);
+            response.Intent = inferredIntent;
+            return await ExecuteIntentAsync(response, ct);
+        }
+
+        // Known category names — log a warning but still show the AI's message
+        var knownCategories = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "UTILS", "FILE", "SYSTEM", "NETWORK", "MEDIA", "POWER", "DEV",
+            "AUTO", "BATCH", "SEARCH", "ANALYSIS", "TEXT", "APPS", "FILES",
+            "WORKFLOW", "CREATE", "EDIT", "HUB", "IMAGE"
+        };
+
+        if (knownCategories.Contains(rawIntent))
+            _logger.LogWarning("AI returned category name '{Category}' instead of specific intent — could not infer from context", rawIntent);
+
+        // If the AI returned a message that looks useful, just show it
+        if (!string.IsNullOrWhiteSpace(response.Message) && response.Message.Length > 10)
+        {
+            _logger.LogWarning("Unknown intent '{Intent}', returning AI message as chat", rawIntent);
+            return new ActionResult { Success = true, Message = response.Message };
+        }
+
+        return new ActionResult { Success = false, Message = $"I wasn't sure how to handle that. Could you rephrase your request?" };
+    }
+
+    /// <summary>
+    /// Scans the context string (message + parameters) for keywords and returns the most likely intent.
+    /// Compound keywords are checked first for precision, then single keywords.
+    /// </summary>
+    private static string? InferIntentFromContext(string context)
+    {
+        // Compound keywords first (more specific matches take priority)
+        var compoundMappings = new (string keyword, string intent)[]
+        {
+            // DEV
+            ("qr code", "qr_code"), ("qr_code", "qr_code"), ("qrcode", "qr_code"),
+            ("api test", "api_test"), ("api_test", "api_test"),
+            ("code format", "code_format"), ("code_format", "code_format"),
+            ("git quick", "git_quick"), ("git_quick", "git_quick"),
+
+            // UTILS
+            ("wifi password", "wifi_info"), ("wifi info", "wifi_info"), ("wifi_info", "wifi_info"),
+            ("screen shot", "screenshot"), ("screen capture", "screenshot"),
+            ("set reminder", "set_reminder"), ("set_reminder", "set_reminder"),
+            ("text to speech", "text_to_speech"), ("text_to_speech", "text_to_speech"),
+            ("hash file", "hash_file"), ("hash_file", "hash_file"),
+            ("convert units", "convert_units"), ("convert_units", "convert_units"),
+            ("generate password", "generate_password"), ("generate_password", "generate_password"),
+            ("quick math", "quick_math"), ("quick_math", "quick_math"),
+            ("ping host", "ping_host"), ("ping_host", "ping_host"),
+            ("schedule shutdown", "schedule_shutdown"), ("schedule_shutdown", "schedule_shutdown"),
+
+            // FILE
+            ("organize folder", "organize_folder"), ("organize_folder", "organize_folder"),
+            ("detect duplicate", "detect_duplicates"), ("detect_duplicates", "detect_duplicates"),
+            ("rename file", "rename_files"), ("rename_files", "rename_files"),
+            ("move file", "move_files"), ("move_files", "move_files"),
+            ("delete file", "delete_files"), ("delete_files", "delete_files"),
+            ("create folder", "create_folder"), ("create_folder", "create_folder"),
+            ("open file", "open_file"), ("open_file", "open_file"),
+
+            // SYSTEM
+            ("system info", "system_info"), ("system_info", "system_info"),
+            ("change wallpaper", "change_wallpaper"), ("change_wallpaper", "change_wallpaper"),
+            ("clean desktop", "clean_desktop"), ("clean_desktop", "clean_desktop"),
+            ("clean temp", "clean_temp"), ("clean_temp", "clean_temp"),
+            ("process action", "process_action"), ("process_action", "process_action"),
+
+            // NETWORK
+            ("network diagnostic", "network_diagnostics"), ("network_diagnostics", "network_diagnostics"),
+            ("port scan", "port_scan"), ("port_scan", "port_scan"),
+            ("dns manage", "dns_manage"), ("dns_manage", "dns_manage"),
+            ("hosts file", "hosts_file"), ("hosts_file", "hosts_file"),
+
+            // MEDIA
+            ("data convert", "data_convert"), ("data_convert", "data_convert"),
+            ("image tool", "image_tools"), ("image_tools", "image_tools"),
+            ("pdf tool", "pdf_tools"), ("pdf_tools", "pdf_tools"),
+            ("extract text", "extract_text"), ("extract_text", "extract_text"),
+
+            // POWER
+            ("startup manager", "startup_manager"), ("startup_manager", "startup_manager"),
+            ("service manager", "service_manager"), ("service_manager", "service_manager"),
+            ("environment var", "env_variables"), ("env_variables", "env_variables"),
+            ("performance report", "performance_report"), ("performance_report", "performance_report"),
+            ("power plan", "power_plan"), ("power_plan", "power_plan"),
+            ("storage analyz", "storage_analyzer"), ("storage_analyzer", "storage_analyzer"),
+        };
+
+        foreach (var (keyword, intent) in compoundMappings)
+        {
+            if (context.Contains(keyword))
+                return intent;
+        }
+
+        // Single keywords (less specific — checked after compounds)
+        var singleMappings = new (string keyword, string intent)[]
+        {
+            ("qr", "qr_code"),
+            ("wifi", "wifi_info"),
+            ("screenshot", "screenshot"),
+            ("remind", "set_reminder"),
+            ("compress", "compress_files"),
+            ("clipboard", "clipboard_action"),
+            ("translat", "translate_text"),
+            ("shutdown", "schedule_shutdown"),
+            ("wallpaper", "change_wallpaper"),
+            ("duplicate", "detect_duplicates"),
+            ("ping", "ping_host"),
+        };
+
+        foreach (var (keyword, intent) in singleMappings)
+        {
+            if (context.Contains(keyword))
+                return intent;
+        }
+
+        return null;
     }
 
     /// <summary>
@@ -866,7 +1059,9 @@ public class IntentExecutionService
 
     private Task<ActionResult> ExecuteFolderInsightsAsync(Dictionary<string, object> parameters, CancellationToken ct)
     {
-        if (!parameters.TryGetValue("folderPath", out var folderPath))
+        if (!parameters.TryGetValue("folderPath", out var folderPath)
+            && !parameters.TryGetValue("path", out folderPath)
+            && !parameters.TryGetValue("folder", out folderPath))
             return Task.FromResult(new ActionResult { Success = false, Message = "Missing parameter: folderPath" });
 
         var rawPath = folderPath?.ToString() ?? string.Empty;
@@ -2042,6 +2237,25 @@ public class IntentExecutionService
 
         try
         {
+            // Auto-fix Python indentation if needed
+            if (language == "python")
+            {
+                try
+                {
+                    var vmType = Type.GetType("ZayFlow.App.ViewModels.AIAssistantViewModel, ZayFlow.App");
+                    var fixMethod = vmType?.GetMethod("FixPythonIndentation", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                    if (fixMethod != null)
+                    {
+                        var vm = App.Current?.MainWindow?.DataContext;
+                        if (vm != null && fixMethod != null)
+                        {
+                            content = (string)fixMethod.Invoke(vm, new object[] { content });
+                        }
+                    }
+                }
+                catch { /* fallback: do nothing */ }
+            }
+
             var resolvedFolder = ResolvePath(savePath);
             if (string.IsNullOrWhiteSpace(resolvedFolder))
                 resolvedFolder = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
@@ -2065,10 +2279,8 @@ public class IntentExecutionService
 
             _logger.LogInformation($"Created file: {filePath}");
 
-            // Build a result that shows the code preview in chat
-            var langTag = string.IsNullOrWhiteSpace(language) ? "" : language;
-            var codePreview = content.Length > 3000 ? content[..3000] + "\n// ... (truncated)" : content;
-            var message = $"✅ **File created:** `{fileName}`\n📂 **Location:** `{resolvedFolder}`\n📄 Opened in default editor.\n\n**Code:**\n```{langTag}\n{codePreview}\n```";
+            // Don't include code in the message — the CodeArtifactViewer already shows it via EnrichCodeArtifacts
+            var message = $"✅ **File created:** `{fileName}`\n📂 **Location:** `{resolvedFolder}`\n📄 Opened in default editor.";
 
             return new ActionResult
             {
@@ -2081,6 +2293,229 @@ public class IntentExecutionService
             _logger.LogError($"Create file error: {ex.Message}");
             return new ActionResult { Success = false, Message = $"Failed to create file: {ex.Message}" };
         }
+    }
+
+    /// <summary>
+    /// Creates a multi-file project with folders and subfolders.
+    /// Used by the code generation engine for complex projects (Flutter, React, etc.)
+    /// </summary>
+    private async Task<ActionResult> ExecuteCreateProjectAsync(Dictionary<string, object> parameters, string aiContent, CancellationToken ct)
+    {
+        var projectName = parameters.TryGetValue("projectName", out var pn) ? pn?.ToString() ?? "project" : "project";
+        var savePath = parameters.TryGetValue("savePath", out var sp) ? sp?.ToString() ?? "Desktop" : "Desktop";
+
+        // Get files list from parameters
+        List<Dictionary<string, object>>? files = null;
+        if (parameters.TryGetValue("files", out var filesObj))
+        {
+            if (filesObj is List<Dictionary<string, object>> typedFiles)
+                files = typedFiles;
+            else if (filesObj is System.Collections.IList list)
+            {
+                files = new List<Dictionary<string, object>>();
+                foreach (var item in list)
+                {
+                    if (item is Dictionary<string, object> dict)
+                        files.Add(dict);
+                }
+            }
+        }
+
+        if (files == null || files.Count == 0)
+            return new ActionResult { Success = false, Message = "No files found in project definition." };
+
+        try
+        {
+            ReportProgress("📁 Preparing project workspace...", 10, "📁");
+            var resolvedFolder = ResolvePath(savePath);
+            if (string.IsNullOrWhiteSpace(resolvedFolder))
+                resolvedFolder = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
+
+            // Sanitize project name for folder
+            var invalidChars = Path.GetInvalidFileNameChars();
+            var safeProjectName = new string(projectName.Where(c => !invalidChars.Contains(c)).Take(100).ToArray());
+            if (string.IsNullOrWhiteSpace(safeProjectName))
+                safeProjectName = "project";
+
+            var projectFolder = Path.Combine(resolvedFolder, safeProjectName);
+
+            // If folder already exists, add a timestamp suffix
+            if (Directory.Exists(projectFolder))
+                projectFolder = Path.Combine(resolvedFolder, $"{safeProjectName}_{DateTime.Now:HHmmss}");
+
+            Directory.CreateDirectory(projectFolder);
+
+            var createdFiles = new List<string>();
+            var projectFileSpecs = new List<ProjectFileSpec>();
+            foreach (var fileEntry in files)
+            {
+                var fileName = fileEntry.TryGetValue("fileName", out var fnVal) ? fnVal?.ToString() ?? "" : "";
+                var content = fileEntry.TryGetValue("content", out var cVal) ? cVal?.ToString() ?? "" : "";
+                var language = fileEntry.TryGetValue("language", out var langVal) ? langVal?.ToString()?.ToLowerInvariant() ?? "" : "";
+
+                if (string.IsNullOrWhiteSpace(fileName)) continue;
+
+                // Auto-fix Python indentation if needed
+                if (language == "python")
+                {
+                    try
+                    {
+                        var vmType = Type.GetType("ZayFlow.App.ViewModels.AIAssistantViewModel, ZayFlow.App");
+                        var fixMethod = vmType?.GetMethod("FixPythonIndentation", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                        if (fixMethod != null)
+                        {
+                            var vm = App.Current?.MainWindow?.DataContext;
+                            if (vm != null)
+                                content = (string)fixMethod.Invoke(vm, new object[] { content });
+                        }
+                    }
+                    catch { /* fallback: do nothing */ }
+                }
+
+                // fileName may contain relative subdirectories (e.g. "lib/main.dart", "src/routes/index.js")
+                var sanitizedParts = fileName.Split('/', '\\')
+                    .Select(part => SanitizeFileName(part))
+                    .ToArray();
+                var relativePath = Path.Combine(sanitizedParts);
+                var fullPath = Path.Combine(projectFolder, relativePath);
+
+                // Create subdirectories as needed
+                var fileDir = Path.GetDirectoryName(fullPath);
+                if (!string.IsNullOrEmpty(fileDir) && !Directory.Exists(fileDir))
+                    Directory.CreateDirectory(fileDir);
+
+                await File.WriteAllTextAsync(fullPath, content, ct);
+                createdFiles.Add(relativePath);
+                projectFileSpecs.Add(new ProjectFileSpec
+                {
+                    FileName = relativePath,
+                    Content = content,
+                    Language = language
+                });
+            }
+
+            _logger.LogInformation("Created project '{ProjectName}' with {FileCount} files at {Path}",
+                safeProjectName, createdFiles.Count, projectFolder);
+
+            // Open the project folder in Explorer
+            try
+            {
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = projectFolder,
+                    UseShellExecute = true
+                });
+            }
+            catch { /* ignore */ }
+
+            var fileList = string.Join("\n", createdFiles.Select(f => $"  - `{f}`"));
+            var message = $"✅ **Project created:** `{safeProjectName}`\n📂 **Location:** `{projectFolder}`\n📁 **Files ({createdFiles.Count}):**\n{fileList}";
+
+            ReportProgress("🔎 Inspecting project bootstrap requirements...", 75, "🔎");
+            var bootstrapPlan = _projectBootstrapService.Analyze(projectFolder, projectFileSpecs);
+            var bootstrapValidation = _projectBootstrapService.Validate(projectFolder, bootstrapPlan);
+            if (bootstrapPlan.RequiresBootstrap)
+            {
+                if (!bootstrapValidation.HasRequiredStructure)
+                {
+                    return new ActionResult
+                    {
+                        Success = false,
+                        Message = $"{message}\n\n❌ **Project verification failed:** missing required files for {bootstrapPlan.DisplayName}: {string.Join(", ", bootstrapValidation.MissingRequiredFiles)}"
+                    };
+                }
+
+                var toolCheck = await _projectBootstrapService.CheckToolAsync(bootstrapPlan, ct).ConfigureAwait(false);
+                if (!toolCheck.IsAvailable)
+                {
+                    return new ActionResult
+                    {
+                        Success = true,
+                        Message = $"{message}\n\n⚠️ **Bootstrap blocked:** {toolCheck.FailureReason}"
+                    };
+                }
+
+                if (bootstrapPlan.ExpectedArtifacts.Count == 0 || !bootstrapValidation.HasExpectedArtifacts)
+                {
+                    return new ActionResult
+                    {
+                        Success = true,
+                        Message = $"{message}\n\n🧭 **Next step required:** run `{bootstrapPlan.BootstrapCommand}` to finish preparing this {bootstrapPlan.DisplayName} project.\n\nThis step will scaffold the missing framework/runtime files and verify the project is actually usable.",
+                        RequiresConfirmation = true,
+                        FollowUpIntent = "run_command",
+                        FollowUpConfirmationMessage = $"Run `{bootstrapPlan.BootstrapCommand}` to finish setting up `{safeProjectName}`?",
+                        FollowUpMessage = $"The project files are ready, but the app is not finished yet. Approve the next step to bootstrap and verify `{safeProjectName}` for {bootstrapPlan.DisplayName}.",
+                        FollowUpParameters = bootstrapPlan.ToCommandParameters()
+                    };
+                }
+
+                message += $"\n\n✅ **Verified structure for {bootstrapPlan.DisplayName}.**\nℹ️ {bootstrapPlan.VerificationNote}";
+            }
+
+            return new ActionResult
+            {
+                Success = true,
+                Message = message
+            };
+        }
+        catch (OperationCanceledException)
+        {
+            return new ActionResult { Success = false, Message = "Project creation canceled." };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError($"Create project error: {ex.Message}");
+            return new ActionResult { Success = false, Message = $"Failed to create project: {ex.Message}" };
+        }
+    }
+
+    private async Task<ActionResult> ExecuteGenerateImageAsync(Dictionary<string, object> parameters, CancellationToken ct)
+    {
+        var prompt = parameters.TryGetValue("prompt", out var p) ? p?.ToString() ?? "" : "";
+        var savePath = parameters.TryGetValue("savePath", out var sp) ? sp?.ToString() ?? "Desktop" : "Desktop";
+
+        if (string.IsNullOrWhiteSpace(prompt))
+        {
+            return new ActionResult { Success = false, Message = "Please describe the image you want to generate." };
+        }
+
+        var resolvedFolder = ResolvePath(savePath);
+        if (string.IsNullOrWhiteSpace(resolvedFolder))
+            resolvedFolder = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
+
+        var fileName = $"zayflow_image_{DateTime.Now:yyyyMMdd_HHmmss}.png";
+        var fullPath = Path.Combine(resolvedFolder, fileName);
+
+        ReportProgress("Generating image...", 30, "🎨");
+
+        if (_aiService == null)
+        {
+            return new ActionResult { Success = false, Message = "AI service not available." };
+        }
+
+        var result = await _aiService.GenerateImageAsync(prompt, fullPath, ct);
+
+        if (!result.Success)
+        {
+            return new ActionResult { Success = false, Message = result.Message };
+        }
+
+        // Auto-open the image
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = result.FilePath,
+                UseShellExecute = true
+            });
+        }
+        catch { /* ignore if no default app */ }
+
+        return new ActionResult
+        {
+            Success = true,
+            Message = $"🎨 **Image generated!**\n\n**Prompt:** {prompt}\n📂 **Saved to:** `{result.FilePath}`\n📄 Opened in default viewer."
+        };
     }
 
     /// <summary>
@@ -2195,6 +2630,16 @@ public class IntentExecutionService
     {
         var command = parameters.TryGetValue("command", out var cmd) ? cmd?.ToString() ?? "" : "";
         var shell = parameters.TryGetValue("shell", out var sh) ? sh?.ToString()?.ToLowerInvariant() ?? "powershell" : "powershell";
+        var workingDirectory = parameters.TryGetValue("workingDirectory", out var wd) ? wd?.ToString() ?? string.Empty : string.Empty;
+        var frameworkId = parameters.TryGetValue("frameworkId", out var frameworkObj) ? frameworkObj?.ToString() ?? string.Empty : string.Empty;
+        var expectedArtifacts = parameters.TryGetValue("expectedArtifacts", out var expectedObj)
+            ? ParseStringList(expectedObj)
+            : new List<string>();
+        var verificationNote = parameters.TryGetValue("verificationNote", out var noteObj) ? noteObj?.ToString() ?? string.Empty : string.Empty;
+        var recoveryReason = parameters.TryGetValue("recoveryReason", out var recoveryObj) ? recoveryObj?.ToString() ?? string.Empty : string.Empty;
+        var timeoutSeconds = parameters.TryGetValue("timeoutSeconds", out var timeoutObj) && int.TryParse(timeoutObj?.ToString(), out var timeout)
+            ? Math.Clamp(timeout, 5, 300)
+            : 30;
 
         if (string.IsNullOrWhiteSpace(command))
             return new ActionResult { Success = false, Message = "No command specified." };
@@ -2210,6 +2655,16 @@ public class IntentExecutionService
         try
         {
             var isCmd = shell == "cmd";
+            var resolvedWorkingDirectory = string.IsNullOrWhiteSpace(workingDirectory)
+                ? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)
+                : ResolvePath(workingDirectory);
+            if (!Directory.Exists(resolvedWorkingDirectory))
+                resolvedWorkingDirectory = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+
+            var progressStatus = string.IsNullOrWhiteSpace(recoveryReason)
+                ? $"⚙️ Running command: {command}"
+                : $"♻️ Recovery step: {recoveryReason}";
+            ReportProgress(progressStatus, 20, string.IsNullOrWhiteSpace(recoveryReason) ? "⚙️" : "♻️");
             var psi = new System.Diagnostics.ProcessStartInfo
             {
                 FileName = isCmd ? "cmd.exe" : "powershell.exe",
@@ -2218,26 +2673,47 @@ public class IntentExecutionService
                 RedirectStandardError = true,
                 UseShellExecute = false,
                 CreateNoWindow = true,
-                WorkingDirectory = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)
+                WorkingDirectory = resolvedWorkingDirectory
             };
 
             using var process = System.Diagnostics.Process.Start(psi);
             if (process == null)
                 return new ActionResult { Success = false, Message = "Failed to start process." };
 
-            // Timeout after 30 seconds
-            var outputTask = process.StandardOutput.ReadToEndAsync(ct);
-            var errorTask = process.StandardError.ReadToEndAsync(ct);
-            var completed = process.WaitForExit(30000);
+            var outputTask = process.StandardOutput.ReadToEndAsync();
+            var errorTask = process.StandardError.ReadToEndAsync();
 
-            if (!completed)
+            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            timeoutCts.CancelAfter(TimeSpan.FromSeconds(timeoutSeconds));
+            try
             {
-                process.Kill();
-                return new ActionResult { Success = false, Message = "⚠️ Command timed out after 30 seconds." };
+                await process.WaitForExitAsync(timeoutCts.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                try
+                {
+                    if (!process.HasExited)
+                        process.Kill(true);
+                }
+                catch { }
+
+                return new ActionResult { Success = false, Message = "⚠️ Command canceled by user." };
+            }
+            catch (OperationCanceledException)
+            {
+                try
+                {
+                    if (!process.HasExited)
+                        process.Kill(true);
+                }
+                catch { }
+
+                return new ActionResult { Success = false, Message = $"⚠️ Command timed out after {timeoutSeconds} seconds." };
             }
 
-            var output = await outputTask;
-            var error = await errorTask;
+            var output = await outputTask.ConfigureAwait(false);
+            var error = await errorTask.ConfigureAwait(false);
 
             // Truncate very long outputs
             if (output.Length > 3000) output = output[..3000] + "\n... (output truncated)";
@@ -2245,20 +2721,104 @@ public class IntentExecutionService
 
             if (process.ExitCode == 0)
             {
+                ReportProgress("✅ Command finished. Verifying results...", 85, "✅");
+                var message = $"✅ Command executed successfully:\n```\n{(string.IsNullOrWhiteSpace(output) ? "(no output)" : output.Trim())}\n```";
+
+                if (!string.IsNullOrWhiteSpace(frameworkId) && !string.IsNullOrWhiteSpace(resolvedWorkingDirectory) && expectedArtifacts.Count > 0)
+                {
+                    var validation = _projectBootstrapService.ValidateExpectedArtifacts(resolvedWorkingDirectory, expectedArtifacts);
+                    if (validation.IsReady)
+                    {
+                        message += $"\n\n✅ Verified expected bootstrap artifacts for `{frameworkId}`.";
+                    }
+                    else
+                    {
+                        var plan = new ProjectBootstrapPlan
+                        {
+                            FrameworkId = frameworkId,
+                            DisplayName = frameworkId,
+                            ProjectFolder = resolvedWorkingDirectory,
+                            BootstrapCommand = command,
+                            BootstrapShell = shell,
+                            ExpectedArtifacts = expectedArtifacts,
+                            VerificationNote = verificationNote
+                        };
+                        var analysis = _projectBootstrapService.AnalyzeVerificationFailure(plan, command, validation);
+                        if (analysis.CanRetry && !string.IsNullOrWhiteSpace(analysis.RetryCommand))
+                        {
+                            return new ActionResult
+                            {
+                                Success = true,
+                                Message = $"{message}\n\n⚠️ Verification warning: expected artifacts still missing: {string.Join(", ", validation.MissingArtifacts)}",
+                                RequiresConfirmation = true,
+                                FollowUpIntent = "run_command",
+                                FollowUpConfirmationMessage = $"Retry bootstrap for `{frameworkId}` using `{analysis.RetryCommand}`?",
+                                FollowUpMessage = $"{analysis.Summary}\n\nMissing artifacts: {string.Join(", ", validation.MissingArtifacts)}",
+                                FollowUpParameters = plan.ToCommandParameters(analysis.RetryCommand, analysis.TimeoutSeconds, analysis.RecoveryReason)
+                            };
+                        }
+
+                        message += $"\n\n⚠️ Validation warning: expected artifacts still missing: {string.Join(", ", validation.MissingArtifacts)}";
+                    }
+                }
+                else if (!string.IsNullOrWhiteSpace(verificationNote))
+                {
+                    message += $"\n\nℹ️ {verificationNote}";
+                }
+
                 return new ActionResult
                 {
                     Success = true,
-                    Message = $"✅ Command executed successfully:\n```\n{(string.IsNullOrWhiteSpace(output) ? "(no output)" : output.Trim())}\n```"
+                    Message = message
                 };
             }
             else
             {
+                var combinedError = string.IsNullOrWhiteSpace(error) ? output : $"{error.Trim()}\n{output.Trim()}".Trim();
+                if (!string.IsNullOrWhiteSpace(frameworkId))
+                {
+                    var plan = new ProjectBootstrapPlan
+                    {
+                        FrameworkId = frameworkId,
+                        DisplayName = frameworkId,
+                        ProjectFolder = resolvedWorkingDirectory,
+                        BootstrapCommand = command,
+                        BootstrapShell = shell,
+                        ExpectedArtifacts = expectedArtifacts,
+                        VerificationNote = verificationNote
+                    };
+                    var analysis = _projectBootstrapService.AnalyzeFailure(plan, command, output, error, process.ExitCode, resolvedWorkingDirectory);
+                    if (analysis.CanRetry && !string.IsNullOrWhiteSpace(analysis.RetryCommand))
+                    {
+                        return new ActionResult
+                        {
+                            Success = false,
+                            Message = $"❌ Command failed (exit code {process.ExitCode}):\n{combinedError}\n\n♻️ {analysis.Summary}",
+                            RequiresConfirmation = true,
+                            FollowUpIntent = "run_command",
+                            FollowUpConfirmationMessage = $"Retry bootstrap for `{frameworkId}` using `{analysis.RetryCommand}`?",
+                            FollowUpMessage = $"{analysis.Summary}\n\nApprove the suggested recovery command to keep iterating.",
+                            FollowUpParameters = plan.ToCommandParameters(analysis.RetryCommand, analysis.TimeoutSeconds, analysis.RecoveryReason)
+                        };
+                    }
+
+                    return new ActionResult
+                    {
+                        Success = false,
+                        Message = $"❌ Command failed (exit code {process.ExitCode}):\n{combinedError}\n\n⚠️ {analysis.Summary}"
+                    };
+                }
+
                 return new ActionResult
                 {
                     Success = false,
-                    Message = $"❌ Command failed (exit code {process.ExitCode}):\n{error.Trim()}"
+                    Message = $"❌ Command failed (exit code {process.ExitCode}):\n{combinedError}"
                 };
             }
+        }
+        catch (OperationCanceledException)
+        {
+            return new ActionResult { Success = false, Message = "⚠️ Command canceled by user." };
         }
         catch (Exception ex)
         {
@@ -3115,7 +3675,7 @@ Text to translate:
                     return new ActionResult
                     {
                         Success = true,
-                        Message = $"📸 Active window screenshot saved!\n📁 {fullPath}\n📐 {w}x{h} pixels"
+                        Message = $"📸 Active window screenshot saved!\n\n![Screenshot]({fullPath})\n\n📁 {fullPath}\n📐 {w}x{h} pixels"
                     };
                 }
             }
@@ -3127,7 +3687,7 @@ Text to translate:
             return new ActionResult
             {
                 Success = true,
-                Message = $"📸 Screenshot saved!\n📁 {fullPath}\n📐 {actualWidth}x{actualHeight} pixels"
+                Message = $"📸 Screenshot saved!\n\n![Screenshot]({fullPath})\n\n📁 {fullPath}\n📐 {actualWidth}x{actualHeight} pixels"
             };
         }
         catch (Exception ex)

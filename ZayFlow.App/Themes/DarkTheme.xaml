@@ -123,7 +123,7 @@
     <!-- ══════════ GLASS MATERIAL SYSTEM ══════════ -->
 
     <!-- Glass card fill — semi-transparent for depth -->
-    <SolidColorBrush x:Key="GlassBackgroundBrush" Color="#1C1C28" Opacity="0.65"/>
+    <SolidColorBrush x:Key="GlassBackgroundBrush" Color="#1C1C28" Opacity="0.78"/>
     <!-- Glass card border — subtle white catch-light -->
     <SolidColorBrush x:Key="GlassBorderBrush" Color="#FFFFFF" Opacity="0.08"/>
     <!-- Glass highlight — top-edge light refraction line -->
@@ -135,6 +135,7 @@
     <SolidColorBrush x:Key="SidebarGlassBrush" Color="#16161E" Opacity="0.78"/>
     <!-- Title bar glass -->
     <SolidColorBrush x:Key="TitleBarGlassBrush" Color="#12121A" Opacity="0.82"/>
+    <SolidColorBrush x:Key="ChatGlassBrush" Color="#1A1A26" Opacity="0.55"/>
     <!-- Ambient glow orb — decorative background accent -->
     <RadialGradientBrush x:Key="AmbientGlowBrush" Center="0.3,0.2" RadiusX="0.6" RadiusY="0.6">
         <GradientStop Color="#146366F1" Offset="0"/>
@@ -166,6 +167,11 @@
         <GradientStop Color="#FF2A2A3A" Offset="0.5"/>
         <GradientStop Color="#002A2A3A" Offset="1"/>
     </LinearGradientBrush>
+
+    <!-- Input focus glow -->
+    <SolidColorBrush x:Key="InputFocusGlowBrush" Color="#6366F1" Opacity="0.18"/>
+    <SolidColorBrush x:Key="ChatBubbleHoverBrush" Color="#FFFFFF" Opacity="0.04"/>
+    <SolidColorBrush x:Key="WelcomeShimmerBrush" Color="#6366F1" Opacity="0.06"/>
 
     <!-- Title bar -->
     <SolidColorBrush x:Key="TitleBarBackgroundBrush" Color="#12121A"/>

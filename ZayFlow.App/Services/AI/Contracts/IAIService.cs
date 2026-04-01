@@ -1,3 +1,5 @@
+using ZayFlow.App.Services.Assistant;
+
 namespace ZayFlow.App.Services.AI.Contracts;
 
 /// <summary>
@@ -5,45 +7,28 @@ namespace ZayFlow.App.Services.AI.Contracts;
 /// </summary>
 public interface IAIService
 {
-    /// <summary>
-    /// Send message to AI and execute any required actions.
-    /// </summary>
     Task<ChatMessage> ProcessUserMessageAsync(string userMessage, bool bypassPrivacyConfirmation = false, CancellationToken ct = default);
+
+    Task<ChatMessage> ProcessAssistantTurnAsync(AssistantTurnRequest request, CancellationToken ct = default);
 
     Task<string> SummarizeFileAsync(string fileName, string fileContent, CancellationToken ct = default);
 
     Task<string> GenerateTextAsync(string prompt, CancellationToken ct = default);
 
+    Task<ImageGenerationResult> GenerateImageAsync(string prompt, string savePath, CancellationToken ct = default);
+
     Task<ActionResult> ExecuteIntentAsync(ChatMessage assistantMessage, CancellationToken ct = default);
-    
-    /// <summary>
-    /// Get conversation history.
-    /// </summary>
+
     IReadOnlyList<ChatMessage> ConversationHistory { get; }
-    
-    /// <summary>
-    /// Clear conversation history.
-    /// </summary>
+
     void ClearHistory();
 
-    /// <summary>
-    /// Add a system note to conversation memory so AI knows about action results.
-    /// </summary>
     void AddSystemNote(string note);
-    
-    /// <summary>
-    /// Current AI provider name.
-    /// </summary>
+
     string CurrentProvider { get; }
-    
-    /// <summary>
-    /// Switch to different AI provider.
-    /// </summary>
+
     void SwitchProvider(string providerName);
-    
-    /// <summary>
-    /// Get available providers.
-    /// </summary>
+
     List<string> GetAvailableProviders();
 
     int TokensUsedToday { get; }
@@ -53,42 +38,35 @@ public interface IAIService
     string TokenTier { get; }
 }
 
-/// <summary>
-/// A single message in the conversation.
-/// </summary>
 public class ChatMessage
 {
     public string Id { get; set; } = Guid.NewGuid().ToString();
     public string Content { get; set; } = string.Empty;
-    public string Role { get; set; } = "user"; // "user" or "assistant"
+    public string Role { get; set; } = "user";
     public DateTime Timestamp { get; set; } = DateTime.Now;
-    
-    /// <summary>
-    /// For assistant messages: the action executed.
-    /// </summary>
     public string? ExecutedIntent { get; set; }
-    
-    /// <summary>
-    /// For assistant messages: the result of execution.
-    /// </summary>
     public ActionResult? ExecutionResult { get; set; }
-    
-    /// <summary>
-    /// Token cost for this message.
-    /// </summary>
     public int TokenCost { get; set; } = 0;
-    
-    /// <summary>
-    /// Whether this message required user confirmation.
-    /// </summary>
-    public bool RequiredConfirmation { get; set; } = false;
-
+    public bool RequiredConfirmation { get; set; }
     public string ConfirmationMessage { get; set; } = string.Empty;
+    public Dictionary<string, object> IntentParameters { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    public bool IsSensitiveContentRequest { get; set; }
+    public AssistantTurnMode TurnMode { get; set; } = AssistantTurnMode.Chat;
+    public string ToolTraceSummary { get; set; } = string.Empty;
+    public List<AssistantArtifact> Artifacts { get; set; } = new();
+    public List<AssistantAttachment> Attachments { get; set; } = new();
+    public List<ToolInvocation> ToolInvocations { get; set; } = new();
+    public CodeSessionInfo? CodeSession { get; set; }
+    /// <summary>Phase 2 — The full code session for multi-turn continuation.</summary>
+    public ZayFlow.App.Services.CodeGeneration.Contracts.CodeGenerationSession? RawCodeSession { get; set; }
 
-    public Dictionary<string, object> IntentParameters { get; set; } = new();
-
-    public bool IsSensitiveContentRequest { get; set; } = false;
-    
     public bool IsUserMessage => Role == "user";
     public bool IsAssistantMessage => Role == "assistant";
+}
+
+public class ImageGenerationResult
+{
+    public bool Success { get; set; }
+    public string FilePath { get; set; } = string.Empty;
+    public string Message { get; set; } = string.Empty;
 }

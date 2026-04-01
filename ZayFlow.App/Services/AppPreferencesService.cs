@@ -1,5 +1,6 @@
 using System.IO;
 using System.Text.Json;
+using ZayFlow.App.Services.AI.Providers;
 
 namespace ZayFlow.App.Services;
 
@@ -20,8 +21,9 @@ public sealed class AppPreferences
     public bool ShowRemainingTokens { get; set; } = true;
     public bool EnableOfflineIntelligence { get; set; } = true;
     public int TokenWarningThreshold { get; set; } = 10;
-    public string SelectedProvider { get; set; } = "Groq (Free)";
-    public string GroqApiKey { get; set; } = string.Empty;
+    public string SelectedProvider { get; set; } = "Cloudflare";
+    public string CloudflareApiToken { get; set; } = string.Empty;
+    public string CloudflareAccountId { get; set; } = string.Empty;
     public string SelectedTheme { get; set; } = "Dark";
     public string AccentColor { get; set; } = "#6366F1";
     public double FontSizeScale { get; set; } = 1.0;
@@ -36,6 +38,14 @@ public sealed class AppPreferences
     public bool HasCompletedFirstAIAssistantUse { get; set; } = false;
     public bool HasDismissedActionCards { get; set; } = false;
     public bool IsAutoModeEnabled { get; set; } = false;
+    public string DefaultWorkspaceRoot { get; set; } = string.Empty;
+    public bool EnableImagePaste { get; set; } = true;
+    public bool EnableStreamingResponses { get; set; } = true;
+    public bool UseLocalOcrFirst { get; set; } = true;
+    public string PreferredChatModel { get; set; } = CloudflareProvider.DefaultChatModel;
+    public string PreferredCodingModel { get; set; } = CloudflareProvider.DefaultCodeModel;
+    public string PreferredVisionModel { get; set; } = CloudflareProvider.DefaultVisionModel;
+    public bool EnableArtifactPane { get; set; } = true;
 }
 
 public sealed class ChatSessionHistoryRecord
@@ -52,6 +62,11 @@ public sealed class ChatMessageRecord
     public string Content { get; set; } = string.Empty;
     public bool IsUser { get; set; }
     public DateTime Timestamp { get; set; } = DateTime.Now;
+    public string MessageKind { get; set; } = "chat";
+    public List<string> AttachmentIds { get; set; } = new();
+    public List<string> ArtifactIds { get; set; } = new();
+    public string ToolTraceSummary { get; set; } = string.Empty;
+    public string WorkspaceRoot { get; set; } = string.Empty;
 }
 
 public sealed class CommandUsageRecord
@@ -143,6 +158,10 @@ public sealed class AppPreferencesService : IAppPreferencesService
         {
             var json = File.ReadAllText(_settingsPath);
             var value = JsonSerializer.Deserialize<AppPreferences>(json, JsonOptions);
+            if (value != null)
+            {
+                NormalizeLegacyProviderSettings(value, json);
+            }
             return value ?? new AppPreferences();
         }
         catch
@@ -158,6 +177,34 @@ public sealed class AppPreferencesService : IAppPreferencesService
         {
             preferences.TokenWindowDate = today;
             preferences.TokensUsedToday = 0;
+        }
+    }
+
+    private static void NormalizeLegacyProviderSettings(AppPreferences preferences, string rawJson)
+    {
+        if (string.Equals(preferences.SelectedProvider, "OpenRouter", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(preferences.SelectedProvider, "AgentRouter", StringComparison.OrdinalIgnoreCase))
+        {
+            preferences.SelectedProvider = "Cloudflare";
+        }
+
+        if (string.IsNullOrWhiteSpace(preferences.PreferredChatModel))
+        {
+            preferences.PreferredChatModel = CloudflareProvider.DefaultChatModel;
+        }
+
+        if (string.IsNullOrWhiteSpace(preferences.PreferredCodingModel)
+            || string.Equals(preferences.PreferredCodingModel, "anthropic/claude-opus-4", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(preferences.PreferredCodingModel, "llama-3.3-70b-versatile", StringComparison.OrdinalIgnoreCase))
+        {
+            preferences.PreferredCodingModel = CloudflareProvider.DefaultCodeModel;
+        }
+
+        if (string.IsNullOrWhiteSpace(preferences.PreferredVisionModel)
+            || string.Equals(preferences.PreferredVisionModel, "anthropic/claude-opus-4", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(preferences.PreferredVisionModel, "meta-llama/llama-4-scout-17b-16e-instruct", StringComparison.OrdinalIgnoreCase))
+        {
+            preferences.PreferredVisionModel = CloudflareProvider.DefaultVisionModel;
         }
     }
 
@@ -180,7 +227,8 @@ public sealed class AppPreferencesService : IAppPreferencesService
             EnableOfflineIntelligence = source.EnableOfflineIntelligence,
             TokenWarningThreshold = source.TokenWarningThreshold,
             SelectedProvider = source.SelectedProvider,
-            GroqApiKey = source.GroqApiKey,
+            CloudflareApiToken = source.CloudflareApiToken,
+            CloudflareAccountId = source.CloudflareAccountId,
             SelectedLanguage = source.SelectedLanguage,
             SelectedTheme = source.SelectedTheme,
             AccentColor = source.AccentColor,
@@ -202,7 +250,12 @@ public sealed class AppPreferencesService : IAppPreferencesService
                         {
                             Content = m.Content,
                             IsUser = m.IsUser,
-                            Timestamp = m.Timestamp
+                            Timestamp = m.Timestamp,
+                            MessageKind = m.MessageKind,
+                            AttachmentIds = m.AttachmentIds.ToList(),
+                            ArtifactIds = m.ArtifactIds.ToList(),
+                            ToolTraceSummary = m.ToolTraceSummary,
+                            WorkspaceRoot = m.WorkspaceRoot
                         })
                         .ToList()
                 })
@@ -227,7 +280,15 @@ public sealed class AppPreferencesService : IAppPreferencesService
                 .ToList(),
             HasCompletedFirstAIAssistantUse = source.HasCompletedFirstAIAssistantUse,
             HasDismissedActionCards = source.HasDismissedActionCards,
-            IsAutoModeEnabled = source.IsAutoModeEnabled
+            IsAutoModeEnabled = source.IsAutoModeEnabled,
+            DefaultWorkspaceRoot = source.DefaultWorkspaceRoot,
+            EnableImagePaste = source.EnableImagePaste,
+            EnableStreamingResponses = source.EnableStreamingResponses,
+            UseLocalOcrFirst = source.UseLocalOcrFirst,
+            PreferredChatModel = source.PreferredChatModel,
+            PreferredCodingModel = source.PreferredCodingModel,
+            PreferredVisionModel = source.PreferredVisionModel,
+            EnableArtifactPane = source.EnableArtifactPane
         };
     }
 }

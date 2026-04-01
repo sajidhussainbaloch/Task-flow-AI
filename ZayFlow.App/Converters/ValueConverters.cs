@@ -29,6 +29,15 @@ public class BoolToVisibilityConverter : IValueConverter
         => value is Visibility.Visible;
 }
 
+public class InverseBoolToVisibilityConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+        => value is true ? Visibility.Collapsed : Visibility.Visible;
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        => value is Visibility.Collapsed;
+}
+
 /// <summary>
 /// Theme background converter (true=dark #1E1E2E, false=light #F5F5F5).
 /// </summary>

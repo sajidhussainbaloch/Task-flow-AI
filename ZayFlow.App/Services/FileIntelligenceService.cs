@@ -60,7 +60,7 @@ public sealed class FileIntelligenceService : IFileIntelligenceService
                 ".txt" => (true, string.Empty, await File.ReadAllTextAsync(filePath, ct)),
                 ".csv" => (true, string.Empty, await File.ReadAllTextAsync(filePath, ct)),
                 ".docx" => await ReadDocxWithErrorHandlingAsync(filePath, ct),
-                ".pdf" => ReadPdfWithErrorHandling(filePath),
+                ".pdf" => await ReadPdfWithErrorHandlingAsync(filePath, ct),
                 _ => (false, "Unsupported file type.", string.Empty)
             };
         }
@@ -114,11 +114,11 @@ Content:
         }
     }
 
-    private static (bool Success, string Error, string FileContent) ReadPdfWithErrorHandling(string filePath)
+    private static async Task<(bool Success, string Error, string FileContent)> ReadPdfWithErrorHandlingAsync(string filePath, CancellationToken ct)
     {
         try
         {
-            var content = ReadPdf(filePath);
+            var content = await ReadPdfAsync(filePath, ct);
             return (true, string.Empty, content);
         }
         catch (Exception ex)
@@ -129,7 +129,7 @@ Content:
 
     private static async Task<string> ReadDocxAsync(string filePath, CancellationToken ct)
     {
-        using var stream = File.OpenRead(filePath);
+        using var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, useAsync: true);
         using var archive = new ZipArchive(stream, ZipArchiveMode.Read);
         var entry = archive.GetEntry("word/document.xml");
         if (entry == null)
@@ -144,9 +144,9 @@ Content:
         return Regex.Replace(withoutTags, "\\s+", " ").Trim();
     }
 
-    private static string ReadPdf(string filePath)
+    private static async Task<string> ReadPdfAsync(string filePath, CancellationToken ct)
     {
-        var bytes = File.ReadAllBytes(filePath);
+        var bytes = await File.ReadAllBytesAsync(filePath, ct);
         var text = Encoding.Latin1.GetString(bytes);
         var printable = new string(text.Where(ch => !char.IsControl(ch) || ch == '\n' || ch == '\r' || ch == '\t').ToArray());
         return Regex.Replace(printable, "\\s+", " ").Trim();

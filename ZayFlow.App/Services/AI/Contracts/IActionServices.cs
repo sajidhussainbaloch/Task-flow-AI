@@ -87,6 +87,11 @@ public class ActionResult
     public bool Success { get; set; }
     public string Message { get; set; } = string.Empty;
     public string? ErrorDetails { get; set; }
+    public bool RequiresConfirmation { get; set; }
+    public string FollowUpIntent { get; set; } = string.Empty;
+    public string FollowUpConfirmationMessage { get; set; } = string.Empty;
+    public string FollowUpMessage { get; set; } = string.Empty;
+    public Dictionary<string, object> FollowUpParameters { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 }
 
 /// <summary>
