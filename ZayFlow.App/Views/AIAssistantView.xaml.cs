@@ -61,4 +61,16 @@ public partial class AIAssistantView : UserControl
             }
         }
     }
+
+    private void CopyMessage_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is System.Windows.Controls.Button btn && btn.Tag is string content)
+        {
+            try
+            {
+                Clipboard.SetText(content);
+            }
+            catch { /* clipboard may be locked */ }
+        }
+    }
 }

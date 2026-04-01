@@ -1,5 +1,6 @@
 using System;
 using System.Collections.ObjectModel;
+using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
 using System.Windows.Input;
@@ -308,8 +309,8 @@ public class AIAssistantViewModel : ViewModelBase
             var cts = new System.Threading.CancellationTokenSource();
             cts.CancelAfter(TimeSpan.FromSeconds(30));
             
-            var userMessageWithPersonality = $"[{SelectedPersonality}] {userMsg}";
-            var aiResponse = await _aiService.ProcessUserMessageAsync(userMessageWithPersonality, false, cts.Token);
+            // Send the user message directly — no personality prefix (saves tokens)
+            var aiResponse = await _aiService.ProcessUserMessageAsync(userMsg, false, cts.Token);
             
             IsTyping = false;
 
@@ -583,23 +584,36 @@ public class AIAssistantViewModel : ViewModelBase
             var finalIdx = Messages.IndexOf(progressMsg);
             if (finalIdx >= 0) Messages.RemoveAt(finalIdx);
 
-            if (!string.IsNullOrWhiteSpace(result.Message) && result.Message != aiMessage.Content)
+            // ── Special handling for create_file: build rich preview from the saved file ──
+            if (result.Success && string.Equals(aiMessage.ExecutedIntent, "create_file", StringComparison.OrdinalIgnoreCase))
             {
-                Messages.Add(new UIChatMessage
+                var displayMsg = BuildCreateFileDisplayMessage(aiMessage);
+                if (!string.IsNullOrWhiteSpace(displayMsg))
                 {
-                    Content = result.Success
-                        ? $"✅ {result.Message}"
-                        : $"❌ {result.Message}",
-                    IsUser = false,
-                    TokenCost = 0
-                });
+                    Messages.Add(new UIChatMessage { Content = displayMsg, IsUser = false, TokenCost = 0 });
+                }
+                else
+                {
+                    // Fallback: show the raw result from execution service
+                    Messages.Add(new UIChatMessage { Content = result.Message, IsUser = false, TokenCost = 0 });
+                }
+            }
+            else if (!string.IsNullOrWhiteSpace(result.Message) && result.Message != aiMessage.Content)
+            {
+                // Generic result for other intents — avoid double emoji prefix
+                var msg = result.Message;
+                var hasIcon = msg.Length > 0 && (char.IsHighSurrogate(msg[0]) || char.GetUnicodeCategory(msg[0]) == System.Globalization.UnicodeCategory.OtherSymbol);
+                if (!hasIcon)
+                    msg = (result.Success ? "\u2705 " : "\u274c ") + msg;
+                Messages.Add(new UIChatMessage { Content = msg, IsUser = false, TokenCost = 0 });
             }
 
             AddTimelineItem(aiMessage.ExecutedIntent ?? "unknown", aiMessage.IntentParameters, result.Success, result.Message);
-            _lastExecutionSummary = result.Message.Length > 180 ? result.Message[..180] + "…" : result.Message;
+            // Keep system note short — never dump full code into conversation history
+            var shortResult = result.Message.Length > 200 ? result.Message[..200] + "…" : result.Message;
+            _lastExecutionSummary = shortResult;
 
-            // Feed execution result back to AI memory so it knows what happened
-            _aiService.AddSystemNote($"[Action executed: {aiMessage.ExecutedIntent}] Result: {(result.Success ? "SUCCESS" : "FAILED")} - {result.Message}");
+            _aiService.AddSystemNote($"[Action executed: {aiMessage.ExecutedIntent}] Result: {(result.Success ? "SUCCESS" : "FAILED")} - {shortResult}");
 
             SaveSessionHistory();
         }
@@ -753,6 +767,129 @@ public class AIAssistantViewModel : ViewModelBase
 
         var preview = string.Join(", ", parameters.Take(4).Select(p => $"{p.Key}={p.Value}"));
         return $"• Params: {preview}";
+    }
+
+    /// <summary>
+    /// Build a rich display message for create_file by reading the actual saved file from disk.
+    /// This is the single source of truth for code preview — completely independent of AI response formatting.
+    /// </summary>
+    private string BuildCreateFileDisplayMessage(ChatMessage aiMessage)
+    {
+        try
+        {
+            var parameters = aiMessage.IntentParameters ?? new Dictionary<string, object>();
+            var fileName = parameters.TryGetValue("fileName", out var fnObj) ? fnObj?.ToString() ?? "" : "";
+            var language = parameters.TryGetValue("language", out var langObj) ? langObj?.ToString() ?? "" : "";
+            var savePath = parameters.TryGetValue("savePath", out var spObj) ? spObj?.ToString() ?? "Desktop" : "Desktop";
+
+            if (string.IsNullOrWhiteSpace(fileName))
+                return string.Empty;
+
+            // Resolve the full path to the created file
+            var folder = ResolveSaveFolder(savePath);
+            var filePath = Path.Combine(folder, fileName);
+
+            var normalizedLang = string.IsNullOrWhiteSpace(language)
+                ? InferLanguageFromFileName(fileName)
+                : language.Trim().ToLowerInvariant();
+
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine($"**File created:** {fileName}");
+            sb.AppendLine($"**Location:** {folder}");
+
+            // Read the actual file content for preview
+            if (File.Exists(filePath))
+            {
+                var fileContent = File.ReadAllText(filePath);
+                if (!string.IsNullOrWhiteSpace(fileContent))
+                {
+                    var preview = fileContent.Length > 3000 ? fileContent[..3000] + "\n// ... (truncated)" : fileContent;
+                    sb.AppendLine();
+                    sb.AppendLine($"```{normalizedLang}");
+                    sb.AppendLine(preview);
+                    sb.AppendLine("```");
+                }
+            }
+            else
+            {
+                // File not found on disk — try from parameters
+                var content = parameters.TryGetValue("content", out var cObj) ? cObj?.ToString() ?? "" : "";
+                if (!string.IsNullOrWhiteSpace(content))
+                {
+                    var preview = content.Length > 3000 ? content[..3000] + "\n// ... (truncated)" : content;
+                    sb.AppendLine();
+                    sb.AppendLine($"```{normalizedLang}");
+                    sb.AppendLine(preview);
+                    sb.AppendLine("```");
+                }
+            }
+
+            // Add run instructions
+            sb.AppendLine();
+            sb.Append(BuildRunSteps(normalizedLang, fileName));
+
+            return sb.ToString().TrimEnd();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning($"BuildCreateFileDisplayMessage failed: {ex.Message}");
+            return string.Empty;
+        }
+    }
+
+    private static string ResolveSaveFolder(string savePath)
+    {
+        if (string.IsNullOrWhiteSpace(savePath))
+            return Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
+
+        if (Path.IsPathRooted(savePath))
+            return savePath;
+
+        var normalized = savePath.Trim().Trim('/', '\\').ToLowerInvariant();
+
+        return normalized switch
+        {
+            "desktop" => Environment.GetFolderPath(Environment.SpecialFolder.Desktop),
+            "downloads" => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads"),
+            "documents" => Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+            "pictures" => Environment.GetFolderPath(Environment.SpecialFolder.MyPictures),
+            _ => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), savePath)
+        };
+    }
+
+    private static string InferLanguageFromFileName(string fileName)
+    {
+        var ext = Path.GetExtension(fileName).ToLowerInvariant();
+        return ext switch
+        {
+            ".py" => "python",
+            ".js" => "javascript",
+            ".ts" => "typescript",
+            ".cs" => "csharp",
+            ".java" => "java",
+            ".cpp" => "cpp",
+            ".c" => "c",
+            ".html" => "html",
+            ".css" => "css",
+            ".json" => "json",
+            ".ps1" => "powershell",
+            _ => "text"
+        };
+    }
+
+    private static string BuildRunSteps(string language, string fileName)
+    {
+        var safeFileName = string.IsNullOrWhiteSpace(fileName) ? "<your-file>" : fileName;
+
+        return language switch
+        {
+            "python" => $"**How to run:**\n- Install Python 3.10+\n- Open terminal in the file folder\n- Run: `python {safeFileName}`",
+            "javascript" => $"**How to run:**\n- Install Node.js\n- Open terminal in the file folder\n- Run: `node {safeFileName}`",
+            "typescript" => $"**How to run:**\n- Install Node.js and TypeScript (`npm i -g typescript`)\n- Compile: `tsc {safeFileName}`\n- Run generated JS with `node`",
+            "csharp" => "**How to run:**\n- Use .NET SDK 8+\n- If standalone source file, place inside a .NET project and run `dotnet run`",
+            "powershell" => $"**How to run:**\n- Open PowerShell in the file folder\n- Run: `./{safeFileName}`",
+            _ => "**How to run:**\n- Open this file in your editor and run it with the appropriate runtime/compiler for its language."
+        };
     }
 
     private void RecordCommandUsage(string command)

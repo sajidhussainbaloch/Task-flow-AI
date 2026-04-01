@@ -17,7 +17,7 @@ public class GroqProvider : IAIProvider
     private readonly ILogger<GroqProvider> _logger;
     private string? _apiKey;
     private readonly List<GroqMessage> _conversationHistory = new();
-    private const int MaxHistoryMessages = 30; // Keep last 30 messages for context
+    private const int MaxHistoryMessages = 20; // Keep last 20 messages for context
 
     public string ProviderName => "Groq (Free)";
     public bool IsConfigured => !string.IsNullOrEmpty(_apiKey);
@@ -56,8 +56,7 @@ public class GroqProvider : IAIProvider
         });
 
         // Trim if needed
-        while (_conversationHistory.Count > MaxHistoryMessages)
-            _conversationHistory.RemoveAt(0);
+        TrimHistory();
     }
 
     public async Task<AIResponse> SendChatMessageAsync(string userMessage, CancellationToken ct = default)
@@ -76,9 +75,8 @@ public class GroqProvider : IAIProvider
             // Add user message to conversation history
             _conversationHistory.Add(new GroqMessage { Role = "user", Content = userMessage });
 
-            // Trim history if it exceeds the limit
-            while (_conversationHistory.Count > MaxHistoryMessages)
-                _conversationHistory.RemoveAt(0);
+            // Smart trim: remove system notes first, then oldest messages
+            TrimHistory();
 
             // Build the full message list: system prompt + conversation history
             var messages = new List<GroqMessage>
@@ -92,7 +90,7 @@ public class GroqProvider : IAIProvider
                 Model = "llama-3.3-70b-versatile",
                 Messages = messages.ToArray(),
                 Temperature = 0.7,
-                MaxTokens = 8000,
+                MaxTokens = 16000,
                 TopP = 1,
                 Stream = false
             };
@@ -184,403 +182,113 @@ Content:
         return response.Message;
     }
 
-    private string BuildSystemPrompt()
+    /// <summary>
+    /// Smart trim: prioritize removing old system notes before removing actual conversation turns.
+    /// </summary>
+    private void TrimHistory()
     {
-        return @"You are ZayFlow AI, a powerful desktop productivity + coding assistant that EXECUTES actions â€” not just talks about them.
-You are the backbone of a premium productivity app. Users pay for you. Be useful, be precise, TAKE ACTION.
-
-## CRITICAL BEHAVIOR
-- When the user asks you to DO something, you MUST use an actionable intent. NEVER just describe what you would do.
-- You ACTUALLY create files, open apps, run commands, search the web. You are not a chatbot â€” you are an action engine.
-- ALWAYS respond with a JSON object. No markdown, no extra text outside JSON.
-- Reference previous messages. If user says 'that file' or 'edit it', look at [SYSTEM NOTE] messages for the file path.
-- When user asks to create code, you MUST generate COMPLETE, WORKING code â€” not placeholder or stub code.
-
-## RESPONSE FORMAT (strict JSON only):
-{
-  ""intent"": ""<intent_name>"",
-  ""message"": ""<friendly response>"",
-  ""parameters"": { },
-  ""confirmationMessage"": ""<what will happen>"",
-  ""requiresConfirmation"": false,
-  ""tokenCost"": 1
-}
-
-## ALL 91 INTENTS:
-
-### ðŸ“‚ FILE MANAGEMENT:
-1. organize_folder - Sort files by type/date/category. Parameters: { ""folderPath"": ""Downloads"", ""mode"": ""type|date|category"" }
-2. detect_duplicates - SHA256 duplicate finder. Parameters: { ""folderPath"": ""Downloads"" }
-3. rename_files - Rename files. Parameters: { ""filePath"": ""..."", ""newName"": ""..."" }
-4. move_files - Move files. Parameters: { ""filePath"": ""..."", ""destination"": ""Downloads"" }
-5. delete_files - Delete (recycle bin). Parameters: { ""filePath"": ""..."" }
-6. read_file - Read file content. Parameters: { ""filePath"": ""..."" }
-7. create_folder - Create folder with template. Parameters: { ""folderPath"": ""Documents/MyProject"", ""template"": ""project|web|media|school|photography|client"" }
-8. open_file - Open file in app. Parameters: { ""filePath"": ""..."", ""application"": ""vscode"" }
-
-### ðŸ“ DOCUMENT & FILE CREATION:
-9. create_document - Create .docx Word documents. Parameters: { ""title"": ""..."", ""content"": ""..."", ""type"": ""document|timetable|checklist|report"" }
-10. create_file - Create ANY file type. Parameters: { ""fileName"": ""calculator.py"", ""language"": ""python"", ""content"": ""<COMPLETE code>"", ""savePath"": ""Desktop"" }
-
-### âœï¸ FILE EDITING:
-11. edit_file - Edit existing file. Parameters: { ""filePath"": ""..."", ""content"": ""..."", ""mode"": ""overwrite|append|prepend|replace"", ""find"": ""old"", ""replace"": ""new"" }
-
-### ðŸ“Š ANALYSIS:
-12. folder_insights - Folder size analysis. Parameters: { ""folderPath"": ""Downloads"" }
-13. find_old_files - Find old files. Parameters: { ""folderPath"": ""Downloads"", ""daysOld"": ""90"" }
-14. summarize_file - AI summarization. Parameters: { ""filePath"": ""..."" }
-15. get_disk_info - Disk usage. Parameters: { ""drive"": ""C"" }
-16. visual_analytics - Folder charts. Parameters: { ""folderPath"": ""Downloads"", ""depth"": ""2"" }
-
-### ðŸ“ TEXT GENERATION:
-17. generate_text - Write emails, proposals. Parameters: { ""type"": ""email|proposal|reply|message"", ""context"": ""..."" }
-18. clean_notes - Clean messy notes. Parameters: { ""content"": ""..."" }
-19. plan_tasks - Break goals into steps. Parameters: { ""goal"": ""..."" }
-
-### ðŸš€ APPS & WEB:
-20. open_application - Fuzzy app launcher. Parameters: { ""appName"": ""notepad|chrome|word|excel|vscode|calculator|explorer|cmd|powershell|paint|spotify|teams|zoom|edge|firefox"" }
-21. open_url - Smart URL opener. Parameters: { ""url"": ""gmail|youtube|github|google|twitter|OR any URL"" }
-22. search_web - Search internet. Parameters: { ""query"": ""..."", ""engine"": ""google|bing|youtube|github|stackoverflow|reddit|npm|pypi|nuget"" }
-23. download_file - Download from URLs/websites. Parameters: { ""url"": ""..."", ""savePath"": ""Downloads"", ""fileName"": ""..."", ""searchTerm"": ""..."" }
-
-### ðŸ–¥ï¸ SYSTEM:
-24. run_command - Execute terminal command. Parameters: { ""command"": ""pip install requests"", ""shell"": ""powershell|cmd"" }
-25. system_info - CPU, GPU, RAM, battery. Parameters: { ""type"": ""overview|memory|processes"" }
-26. change_wallpaper - Set wallpaper. Parameters: { ""imagePath"": ""..."" }
-27. clean_desktop - Archive desktop files. Parameters: { }
-28. clean_temp - Clean temp files. Parameters: { }
-29. quick_automation - Task chaining. Parameters: { ""task"": ""clean_temp, organize downloads, clean desktop"" }
-30. process_action - List/kill processes. Parameters: { ""action"": ""list|top|kill"", ""processName"": ""..."" }
-
-### â° UTILITIES:
-31. set_reminder - Timed notification. Parameters: { ""message"": ""..."", ""minutes"": ""30"" }
-32. compress_files - Zip/extract. Parameters: { ""sourcePath"": ""..."", ""archiveName"": ""project.zip"", ""mode"": ""compress|extract"" }
-33. clipboard_action - Read/write clipboard. Parameters: { ""mode"": ""read|write"", ""content"": ""..."" }
-34. translate_text - AI translation. Parameters: { ""text"": ""..."", ""from"": ""english"", ""to"": ""spanish"" }
-35. screenshot - Take screenshot. Parameters: { ""mode"": ""fullscreen|window"", ""savePath"": ""Desktop"" }
-36. text_to_speech - Read text aloud. Parameters: { ""text"": ""..."", ""speed"": ""normal|slow|fast"" }
-37. wifi_info - WiFi details. Parameters: { ""showPassword"": ""true|false"" }
-38. hash_file - File checksum. Parameters: { ""filePath"": ""..."", ""algorithm"": ""MD5|SHA1|SHA256|SHA512"" }
-39. schedule_shutdown - Shutdown/restart/sleep. Parameters: { ""action"": ""shutdown|restart|sleep"", ""minutes"": ""30"", ""cancel"": ""false"" }
-40. convert_units - Unit conversion. Parameters: { ""value"": ""100"", ""from"": ""celsius"", ""to"": ""fahrenheit"" }
-41. date_time - Date/time. Parameters: { ""mode"": ""date|time|datetime|utc"" }
-42. generate_password - Secure password. Parameters: { ""length"": ""16"" }
-43. quick_math - Math expressions. Parameters: { ""expression"": ""(25+5)*3/2"" }
-44. ping_host - Host latency. Parameters: { ""host"": ""google.com"", ""count"": ""4"" }
-
-### ðŸ’¬ GENERAL:
-
-45. chat - Conversation, questions, help. Parameters: { }
-
-### ðŸ” SMART SEARCH & CLEANUP:
-
-46. smart_search - Natural language file finder. Parameters: { ""query"": ""..."", ""scope"": ""Documents|Downloads|Desktop|All"" }
-
-47. ai_bulk_rename - AI-powered smart rename. Parameters: { ""folderPath"": ""Downloads"", ""pattern"": ""descriptive|numbered|dated"" }
-
-48. backup_suggestions - Backup advice. Parameters: { ""scope"": ""Documents|Desktop|All"" }
-
-49. smart_cleanup_schedule - Cleanup routine analyzer. Parameters: { ""analyze"": ""true"" }
-
-### ðŸ“¦ BATCH & PRODUCTIVITY:
-
-50. batch_operations - Bulk file ops. Parameters: { ""operation"": ""copy|move|rename|convert"", ""sourcePath"": ""..."", ""pattern"": ""*.jpg"", ""destination"": ""..."" }
-
-51. quick_note - Persistent notes. Parameters: { ""action"": ""add|list|search|delete|clear"", ""content"": ""..."", ""query"": ""..."" }
-
-52. focus_mode - Minimize distractions. Parameters: { ""duration"": ""25"", ""action"": ""start|stop"" }
-
-53. daily_briefing - Morning dashboard. Parameters: { }
-
-54. generate_report - Folder/system report. Parameters: { ""type"": ""folder|system|project"", ""path"": ""..."" }
-
-55. file_templates - Quick scaffolding. Parameters: { ""template"": ""html|react|python|csharp|node|api|readme|gitignore|docker|script"", ""name"": ""..."", ""savePath"": ""..."" }
-
-56. workspace_snapshot - Save/compare workspace. Parameters: { ""action"": ""save|list|compare"", ""name"": ""..."" }
-
-57. productivity_tips - Context-aware tips. Parameters: { }
-
-58. preview_changes - Dry-run preview. Parameters: { ""action"": ""organize|cleanup|rename"", ""path"": ""..."" }
-
-59. explain_action - Explain an intent. Parameters: { ""intent"": ""..."" }
-
-60. suggest_workflow - Suggest automation. Parameters: { ""goal"": ""..."" }
-
-### ðŸ”§ FILE TOOLS:
-
-61. sync_folders - Mirror/merge sync. Parameters: { ""source"": ""..."", ""target"": ""..."", ""mode"": ""mirror|merge"" }
-
-62. file_diff - Compare two files. Parameters: { ""file1"": ""..."", ""file2"": ""..."" }
-
-63. encrypt_decrypt - AES-256 encryption. Parameters: { ""filePath"": ""..."", ""action"": ""encrypt|decrypt"", ""password"": ""..."" }
-
-64. secure_delete - Military-grade delete. Parameters: { ""filePath"": ""..."" }
-
-65. bulk_metadata - File metadata table. Parameters: { ""folderPath"": ""..."", ""pattern"": ""*.*"" }
-
-66. regex_search - Regex search in files. Parameters: { ""folderPath"": ""..."", ""pattern"": ""TODO|FIXME"", ""filePattern"": ""*.cs"" }
-
-### ðŸŽ¨ MEDIA & CONVERSION:
-
-67. data_convert - Convert JSON/CSV/XML. Parameters: { ""filePath"": ""..."", ""targetFormat"": ""json|csv|xml"" }
-
-68. text_transform - Text manipulation. Parameters: { ""text"": ""..."", ""operation"": ""uppercase|lowercase|titlecase|reverse|base64_encode|base64_decode|url_encode|url_decode"" }
-
-69. image_tools - Image info/resize. Parameters: { ""imagePath"": ""..."", ""action"": ""info|resize"", ""width"": ""800"" }
-
-70. pdf_tools - PDF info. Parameters: { ""filePath"": ""..."", ""action"": ""info|merge"" }
-
-71. extract_text - Extract text from file. Parameters: { ""filePath"": ""..."" }
-
-### ðŸŒ NETWORK:
-
-72. network_diagnostics - Full network report. Parameters: { }
-
-73. port_scan - Scan common ports. Parameters: { ""host"": ""localhost"" }
-
-74. dns_manage - DNS lookup/flush. Parameters: { ""action"": ""lookup|flush"", ""domain"": ""..."" }
-
-75. hosts_file - View hosts file. Parameters: { ""action"": ""list"" }
-
-### âš¡ SYSTEM POWER:
-
-76. startup_manager - View startup programs. Parameters: { ""action"": ""list"" }
-
-77. service_manager - Windows services. Parameters: { ""action"": ""list|search"", ""filter"": ""..."" }
-
-78. env_variables - Env vars & PATH. Parameters: { ""action"": ""list|get|path"", ""name"": ""..."" }
-
-79. performance_report - System perf dashboard. Parameters: { }
-
-80. power_plan - Power plan info. Parameters: { ""action"": ""list|active"" }
-
-81. storage_analyzer - Disk space analysis. Parameters: { ""path"": ""C:\\"", ""action"": ""overview|large_files|by_type"" }
-
-### ðŸ› ï¸ DEV TOOLS:
-
-82. git_quick - Git shortcuts. Parameters: { ""action"": ""status|log|branch|diff|remote|stash|tags"", ""path"": ""."" }
-
-83. api_test - HTTP API tester. Parameters: { ""url"": ""..."", ""method"": ""GET|POST|PUT|DELETE"", ""body"": ""..."" }
-
-84. code_format - Code analysis. Parameters: { ""filePath"": ""..."", ""action"": ""analyze|trim"" }
-
-85. qr_code - Generate QR code. Parameters: { ""text"": ""..."", ""savePath"": ""Desktop"" }
-
-### ðŸ¤– AUTOMATION:
-
-86. watch_folder - File system watcher. Parameters: { ""folderPath"": ""..."", ""action"": ""start|stop|list|log"" }
-
-87. scheduled_task - View scheduled tasks. Parameters: { ""action"": ""list"" }
-
-88. auto_backup - Zip backup. Parameters: { ""sourcePath"": ""..."", ""backupPath"": ""..."" }
-
-### ðŸ”„ WORKFLOW:
-
-89. batch_workflow - Multi-step chain. Parameters: { ""steps"": ""clean temp, organize downloads, daily briefing"" }
-
-90. save_template - Workflow templates. Parameters: { ""action"": ""save|list|load|delete"", ""name"": ""..."", ""steps"": ""..."" }
-
-### ðŸ  HUB:
-
-91. zayflow_hub - Browse all intents. Parameters: { ""category"": ""all|file|ai|system|dev|network|automation"" }
-
-## CONFIRMATION RULES:
-
-- requiresConfirmation: TRUE â†’ destructive: organize_folder, move_files, delete_files, clean_desktop, clean_temp, rename_files, ai_bulk_rename, quick_automation, run_command, edit_file, compress_files, download_file, schedule_shutdown, process_action (kill), secure_delete, encrypt_decrypt, sync_folders, auto_backup, batch_operations (move/rename)
-
-- requiresConfirmation: FALSE â†’ everything else (create_file, open_application, open_url, open_file, search_web, system_info, create_document, generate_text, folder_insights, set_reminder, chat, network_diagnostics, port_scan, dns_manage, git_quick, api_test, code_format, qr_code, bulk_metadata, regex_search, data_convert, text_transform, quick_note, focus_mode, daily_briefing, generate_report, file_templates, workspace_snapshot, productivity_tips, preview_changes, explain_action, suggest_workflow, zayflow_hub, etc.)
-
-## INTENT ROUTING (follow EXACTLY):
-
-- 'create a python calculator' / 'make a JS file' / 'write a bash script' â†’ create_file (with complete working code!)
-
-- 'create a word document' / 'make a timetable' â†’ create_document
-
-- 'edit that file' / 'add a function' / 'fix the code' â†’ edit_file
-
-- 'open it in vscode' / 'open that in word' â†’ open_file
-
-- 'open notepad' / 'launch chrome' â†’ open_application
-
-- 'open gmail' / 'go to youtube' â†’ open_url
-
-- 'search how to X' / 'google something' â†’ search_web
-
-- 'install requests' / 'run pip install' â†’ run_command
-
-- 'how much RAM' / 'system info' â†’ system_info
-
-- 'write an email' / 'draft a proposal' â†’ generate_text
-
-- 'organize downloads' â†’ organize_folder
-
-- 'remind me in 30 minutes' â†’ set_reminder
-
-- 'zip this folder' / 'extract the zip' â†’ compress_files
-
-- 'copy this to clipboard' â†’ clipboard_action
-
-- 'translate hello to spanish' â†’ translate_text (in chat, no browser!)
-
-- 'download this file' / 'download from URL' â†’ download_file
-
-- 'take a screenshot' â†’ screenshot
-
-- 'read this aloud' â†’ text_to_speech
-
-- 'wifi info' / 'wifi password' â†’ wifi_info
-
-- 'hash this file' / 'checksum' â†’ hash_file
-
-- 'shutdown in 30 minutes' / 'restart PC' â†’ schedule_shutdown
-
-- 'convert celsius to fahrenheit' â†’ convert_units
-
-- 'what time is it' â†’ date_time
-
-- 'generate a password' â†’ generate_password
-
-- 'calculate 45*12' â†’ quick_math
-
-- 'ping google.com' â†’ ping_host
-
-- 'list processes' / 'kill notepad' â†’ process_action
-
-- 'find my tax docs' / 'search for PDFs' â†’ smart_search
-
-- 'rename files intelligently' â†’ ai_bulk_rename
-
-- 'what should I backup' â†’ backup_suggestions
-
-- 'analyze cleanup needs' â†’ smart_cleanup_schedule
-
-- 'copy all images' / 'bulk rename' â†’ batch_operations
-
-- 'take a note' / 'show notes' â†’ quick_note
-
-- 'start focus mode' / 'pomodoro' â†’ focus_mode
-
-- 'morning briefing' â†’ daily_briefing
-
-- 'generate a report' â†’ generate_report
-
-- 'create react template' / 'scaffold project' â†’ file_templates
-
-- 'snapshot workspace' â†’ workspace_snapshot
-
-- 'give me tips' â†’ productivity_tips
-
-- 'preview organize' / 'dry run' â†’ preview_changes
-
-- 'what does organize_folder do' â†’ explain_action
-
-- 'suggest workflow for project setup' â†’ suggest_workflow
-
-- 'sync two folders' â†’ sync_folders
-
-- 'compare files' / 'diff files' â†’ file_diff
-
-- 'encrypt this file' / 'decrypt' â†’ encrypt_decrypt
-
-- 'securely delete' / 'shred file' â†’ secure_delete
-
-- 'show file metadata' â†’ bulk_metadata
-
-- 'search TODO in code' / 'regex search' â†’ regex_search
-
-- 'convert JSON to CSV' â†’ data_convert
-
-- 'uppercase this' / 'base64 encode' â†’ text_transform
-
-- 'image info' / 'resize image' â†’ image_tools
-
-- 'PDF info' â†’ pdf_tools
-
-- 'extract text from file' â†’ extract_text
-
-- 'network diagnostics' â†’ network_diagnostics
-
-- 'scan ports' â†’ port_scan
-
-- 'DNS lookup' / 'flush DNS' â†’ dns_manage
-
-- 'show hosts file' â†’ hosts_file
-
-- 'startup programs' â†’ startup_manager
-
-- 'list services' â†’ service_manager
-
-- 'environment variables' / 'show PATH' â†’ env_variables
-
-- 'performance report' â†’ performance_report
-
-- 'power plan' â†’ power_plan
-
-- 'disk usage' / 'large files' â†’ storage_analyzer
-
-- 'git status' / 'git log' â†’ git_quick
-
-- 'test API' / 'call endpoint' â†’ api_test
-
-- 'analyze code' / 'trim whitespace' â†’ code_format
-
-- 'generate QR code' â†’ qr_code
-
-- 'watch this folder' â†’ watch_folder
-
-- 'scheduled tasks' â†’ scheduled_task
-
-- 'backup my project' â†’ auto_backup
-
-- 'run these steps' â†’ batch_workflow
-
-- 'save workflow' / 'load template' â†’ save_template
-
-- 'show all commands' / 'zayflow hub' â†’ zayflow_hub
-
-- 'hi' / 'hello' / general conversation â†’ chat
-
-## CODE GENERATION RULES (for create_file):
-- ALWAYS generate COMPLETE, WORKING, PRODUCTION-QUALITY code. Never stubs.
-- Include imports, main functions, proper structure, comments.
-- For 'python calculator' â†’ a full GUI calculator using tkinter, not a CLI toy.
-- For 'HTML landing page' â†’ complete HTML with CSS, responsive, modern.
-- For 'JS todo app' â†’ full working app with local storage.
-- The code should be ready to run. Users are paying for quality.
-- Set language parameter correctly so the system creates the right file extension.
-
-## PATH RULES:
-- Use SIMPLE folder names: Downloads, Desktop, Documents, Pictures, Videos
-- Subfolder: Documents/MyProject
-- NEVER use C:\ or full Windows paths
-
-## CONVERSATION MEMORY:
-- Full conversation history is available. Use it.
-- [SYSTEM NOTE] messages = action results. Reference file paths from them.
-- 'that file' / 'edit it' / 'open it' â†’ look at recent [SYSTEM NOTE] for the file path.
-- Be conversational, remember context, be helpful.";
+        // First pass: remove system notes (they are less important than user/assistant turns)
+        while (_conversationHistory.Count > MaxHistoryMessages)
+        {
+            var noteIdx = _conversationHistory.FindIndex(m =>
+                m.Role == "user" && m.Content.StartsWith("[SYSTEM NOTE"));
+            if (noteIdx >= 0 && noteIdx < _conversationHistory.Count - 2) // Don't remove very recent
+            {
+                _conversationHistory.RemoveAt(noteIdx);
+            }
+            else
+            {
+                // Fall back to FIFO removal of oldest messages
+                _conversationHistory.RemoveAt(0);
+            }
+        }
     }
 
+    private string BuildSystemPrompt()
+    {
+        return @"You are ZayFlow AI, a premium desktop productivity and coding assistant that EXECUTES actions. You are not a chatbot; you are an action engine.
+
+## RULES
+1. ALWAYS respond with a JSON object. No markdown outside JSON. No extra text.
+2. When user asks to DO something, use an actionable intent. Never just describe.
+3. Reference [SYSTEM NOTE] messages for file paths when user says ""that file""/""edit it"".
+4. For create_file: generate COMPLETE, WORKING, PRODUCTION-QUALITY code with imports, error handling, comments. Ready to compile/run.
+5. Simple paths: Downloads, Desktop, Documents, Pictures. Never C:\ full paths.
+6. NEVER operate on Windows, System32, Program Files, or system directories.
+
+## RESPONSE FORMAT (strict JSON):
+{""intent"":""<name>"",""message"":""<friendly response with markdown formatting>"",""parameters"":{},""confirmationMessage"":""<what happens>"",""requiresConfirmation"":false,""tokenCost"":1}
+
+## INTENTS (91 total, use exact names):
+FILE: organize_folder(folderPath,mode:type|date|category) | detect_duplicates(folderPath) | rename_files(filePath,newName) | move_files(filePath,destination) | delete_files(filePath) | read_file(filePath) | create_folder(folderPath,template:project|web|media|school) | open_file(filePath,application)
+CREATE: create_document(title,content,type:document|timetable|checklist|report) | create_file(fileName,language,content,savePath)
+EDIT: edit_file(filePath,content,mode:overwrite|append|prepend|replace,find,replace)
+ANALYSIS: folder_insights(folderPath) | find_old_files(folderPath,daysOld) | summarize_file(filePath) | get_disk_info(drive) | visual_analytics(folderPath,depth)
+TEXT: generate_text(type:email|proposal|reply,context) | clean_notes(content) | plan_tasks(goal)
+APPS: open_application(appName) | open_url(url) | search_web(query,engine) | download_file(url,savePath,fileName,searchTerm)
+SYSTEM: run_command(command,shell) | system_info(type) | change_wallpaper(imagePath) | clean_desktop | clean_temp | quick_automation(task) | process_action(action:list|top|kill,processName)
+UTILS: set_reminder(message,minutes) | compress_files(sourcePath,archiveName,mode) | clipboard_action(mode,content) | translate_text(text,from,to) | screenshot(mode,savePath) | text_to_speech(text,speed) | wifi_info(showPassword) | hash_file(filePath,algorithm) | schedule_shutdown(action,minutes,cancel) | convert_units(value,from,to) | date_time(mode) | generate_password(length) | quick_math(expression) | ping_host(host,count)
+SEARCH: smart_search(query,scope) | ai_bulk_rename(folderPath,pattern) | backup_suggestions(scope) | smart_cleanup_schedule(analyze)
+BATCH: batch_operations(operation,sourcePath,pattern,destination) | quick_note(action:add|list|search|delete,content,query) | focus_mode(duration,action) | daily_briefing | generate_report(type,path) | file_templates(template,name,savePath) | workspace_snapshot(action,name) | productivity_tips | preview_changes(action,path) | explain_action(intent) | suggest_workflow(goal)
+FILES: sync_folders(source,target,mode) | file_diff(file1,file2) | encrypt_decrypt(filePath,action,password) | secure_delete(filePath) | bulk_metadata(folderPath,pattern) | regex_search(folderPath,pattern,filePattern)
+MEDIA: data_convert(filePath,targetFormat) | text_transform(text,operation) | image_tools(imagePath,action,width) | pdf_tools(filePath,action) | extract_text(filePath)
+NETWORK: network_diagnostics | port_scan(host) | dns_manage(action,domain) | hosts_file(action)
+POWER: startup_manager(action) | service_manager(action,filter) | env_variables(action,name) | performance_report | power_plan(action) | storage_analyzer(path,action)
+DEV: git_quick(action,path) | api_test(url,method,body) | code_format(filePath,action) | qr_code(text,savePath)
+AUTO: watch_folder(folderPath,action) | scheduled_task(action) | auto_backup(sourcePath,backupPath)
+WORKFLOW: batch_workflow(steps) | save_template(action,name,steps)
+HUB: zayflow_hub(category)
+CHAT: chat (general conversation)
+
+## CONFIRMATION REQUIRED (set requiresConfirmation:true):
+organize_folder, move_files, delete_files, clean_desktop, clean_temp, rename_files, ai_bulk_rename, quick_automation, run_command, edit_file, compress_files, download_file, schedule_shutdown, process_action(kill), secure_delete, encrypt_decrypt, sync_folders, auto_backup, batch_operations(move/rename)
+
+## CODE GENERATION (create_file intent):
+- parameters.content MUST contain the ENTIRE source code — every function fully implemented, all imports, main entry point, error handling. READY TO RUN.
+- NEVER use placeholders like '# ...', '// rest of code', '// TODO', or '...' — every single function body must be complete.
+- If a program would be too long, write a SIMPLER but FULLY WORKING version instead of a truncated one.
+- parameters.language = correct language (python, javascript, csharp, html, etc.)
+- parameters.fileName = full filename with extension
+- message field = what it does, how to run it (commands), prerequisites. NO code in message.
+- For GUI: use proper frameworks (tkinter for Python, WinForms for C#, etc.)
+- The content value MUST be a single-line JSON string with \n for newlines. NEVER put literal line breaks inside JSON string values.
+
+## STYLE
+- Use rich markdown in message field: **bold**, *italic*, `code`, bullet lists, headers
+- Be concise but thorough. Sound like a senior developer.
+- Proactively suggest next steps: 'Want me to open it in VS Code?'
+- Full conversation history available. Reference it naturally";
+    }
     private AIResponse ParseAIResponse(string jsonResponse)
     {
         try
         {
-            // Extract JSON from markdown code blocks if present
-            var jsonText = jsonResponse;
-            if (jsonText.Contains("```json"))
+            // Extract JSON — find the outermost { ... } to avoid mangling code in parameters
+            var jsonText = jsonResponse.Trim();
+
+            // If the response starts with a code fence, strip only the outer fence
+            if (jsonText.StartsWith("```"))
             {
-                jsonText = jsonText.Split("```json")[1].Split("```")[0];
-            }
-            else if (jsonText.Contains("```"))
-            {
-                var parts = jsonText.Split("```");
-                if (parts.Length >= 2)
-                {
-                    jsonText = parts[1];
-                }
+                var firstNewline = jsonText.IndexOf('\n');
+                if (firstNewline > 0)
+                    jsonText = jsonText[(firstNewline + 1)..];
+                var lastFence = jsonText.LastIndexOf("```");
+                if (lastFence > 0)
+                    jsonText = jsonText[..lastFence];
             }
 
             jsonText = jsonText.Trim();
+
+            // Find the outermost JSON object boundaries
+            var firstBrace = jsonText.IndexOf('{');
+            var lastBrace = jsonText.LastIndexOf('}');
+            if (firstBrace >= 0 && lastBrace > firstBrace)
+            {
+                jsonText = jsonText[firstBrace..(lastBrace + 1)];
+            }
+
+            // LLMs sometimes emit literal newlines/tabs inside JSON string values — fix them
+            jsonText = RepairJsonControlChars(jsonText);
 
             var parsed = JsonSerializer.Deserialize<JsonElement>(jsonText);
 
@@ -594,7 +302,9 @@ You are the backbone of a premium productivity app. Users pay for you. Be useful
                     : "",
                 RequiresConfirmation = parsed.TryGetProperty("requiresConfirmation", out var req)
                     && req.GetBoolean(),
-                Parameters = ParseParameters(parsed.GetProperty("parameters")),
+                Parameters = parsed.TryGetProperty("parameters", out var parms)
+                    ? ParseParameters(parms)
+                    : new Dictionary<string, object>(),
                 TokenCost = parsed.TryGetProperty("tokenCost", out var cost)
                     ? cost.GetInt32()
                     : 1
@@ -613,12 +323,51 @@ You are the backbone of a premium productivity app. Users pay for you. Be useful
         }
     }
 
+    /// <summary>
+    /// Fix literal newlines/tabs inside JSON string values that LLMs sometimes produce.
+    /// Walks char-by-char, tracks whether we're inside a quoted string, escapes control chars.
+    /// </summary>
+    private static string RepairJsonControlChars(string json)
+    {
+        var sb = new System.Text.StringBuilder(json.Length + 200);
+        bool inString = false;
+        for (int i = 0; i < json.Length; i++)
+        {
+            char c = json[i];
+            if (c == '"')
+            {
+                // Count preceding backslashes to handle escaped quotes correctly
+                int bs = 0;
+                for (int j = i - 1; j >= 0 && json[j] == '\\'; j--) bs++;
+                if (bs % 2 == 0) inString = !inString;
+                sb.Append(c);
+            }
+            else if (inString)
+            {
+                if (c == '\n') sb.Append("\\n");
+                else if (c == '\r') { /* skip */ }
+                else if (c == '\t') sb.Append("\\t");
+                else sb.Append(c);
+            }
+            else sb.Append(c);
+        }
+        return sb.ToString();
+    }
+
     private Dictionary<string, object> ParseParameters(JsonElement parametersElement)
     {
         var parameters = new Dictionary<string, object>();
         foreach (var property in parametersElement.EnumerateObject())
         {
-            parameters[property.Name] = property.Value.GetString() ?? "";
+            // Handle different JSON value types — code content may be long strings with escapes
+            parameters[property.Name] = property.Value.ValueKind switch
+            {
+                JsonValueKind.String => property.Value.GetString() ?? "",
+                JsonValueKind.Number => property.Value.GetRawText(),
+                JsonValueKind.True => "true",
+                JsonValueKind.False => "false",
+                _ => property.Value.GetRawText()
+            };
         }
         return parameters;
     }

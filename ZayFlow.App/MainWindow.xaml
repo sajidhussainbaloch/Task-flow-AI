@@ -114,24 +114,25 @@
 
                     <!-- Logo + Name -->
                     <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                        <Border Width="28" Height="28" Margin="0,0,10,0">
-                            <TextBlock Text="Z" FontSize="20" FontWeight="Bold" FontFamily="Segoe UI"
-                                       HorizontalAlignment="Center" VerticalAlignment="Center">
-                                <TextBlock.Foreground>
-                                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                                        <GradientStop Color="#6366F1" Offset="0"/>
-                                        <GradientStop Color="#A5B4FC" Offset="1"/>
-                                    </LinearGradientBrush>
-                                </TextBlock.Foreground>
-                            </TextBlock>
+                        <Border Width="30" Height="30" Margin="0,0,10,0" CornerRadius="9"
+                                Background="{DynamicResource AccentGradientBrush}">
+                            <TextBlock Text="Z" FontSize="17" FontWeight="Bold" FontFamily="Segoe UI"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"
+                                       Foreground="White"/>
                         </Border>
-                        <TextBlock Text="ZayFlow" FontSize="14" FontWeight="SemiBold"
-                                   Foreground="{DynamicResource PrimaryTextBrush}" VerticalAlignment="Center"/>
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock Text="ZayFlow" FontSize="14" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource PrimaryTextBrush}"/>
+                            <TextBlock Text="AI workspace for calm, fast automation"
+                                       FontSize="10" Margin="0,-1,0,0"
+                                       Foreground="{DynamicResource TertiaryTextBrush}"/>
+                        </StackPanel>
 
                         <!-- User Plan Badge -->
-                        <Border Margin="12,0,0,0" VerticalAlignment="Center" Style="{StaticResource BadgeFree}">
+                        <Border Margin="12,0,0,0" VerticalAlignment="Center" Style="{StaticResource BadgeFree}"
+                                Background="{DynamicResource AccentSubtleBrush}" BorderBrush="{DynamicResource BorderHoverBrush}">
                             <TextBlock Text="{Binding UserPlan}" FontSize="10" FontWeight="Bold"
-                                       Foreground="{DynamicResource SecondaryTextBrush}"/>
+                                       Foreground="{DynamicResource SidebarItemActiveTextBrush}"/>
                         </Border>
                     </StackPanel>
 
@@ -140,7 +141,8 @@
 
                     <!-- Token Counter & Settings -->
                     <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,16,0">
-                        <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="14" Padding="10,4" Margin="0,0,10,0">
+                        <Border Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderBrush}"
+                                BorderThickness="1" CornerRadius="14" Padding="10,4" Margin="0,0,10,0">
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock Text="{StaticResource IconChart}" Style="{StaticResource FluentIcon}" FontSize="12" Margin="0,0,6,0"/>
                                 <TextBlock Text="{Binding TokenText}" FontSize="11" FontWeight="Medium"
@@ -196,6 +198,8 @@
                                             <Border.Style>
                                                 <Style TargetType="Border">
                                                     <Setter Property="Background" Value="Transparent"/>
+                                                    <Setter Property="BorderBrush" Value="Transparent"/>
+                                                    <Setter Property="BorderThickness" Value="1"/>
                                                     <Setter Property="RenderTransformOrigin" Value="0.5,0.5"/>
                                                     <Setter Property="RenderTransform">
                                                         <Setter.Value>
@@ -225,9 +229,11 @@
                                                         </EventTrigger>
                                                         <DataTrigger Binding="{Binding IsSelected}" Value="True">
                                                             <Setter Property="Background" Value="{DynamicResource SidebarItemActiveBrush}"/>
+                                                            <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
                                                         </DataTrigger>
                                                         <Trigger Property="IsMouseOver" Value="True">
                                                             <Setter Property="Background" Value="{DynamicResource SidebarItemHoverBrush}"/>
+                                                            <Setter Property="BorderBrush" Value="{DynamicResource BorderHoverBrush}"/>
                                                         </Trigger>
                                                     </Style.Triggers>
                                                 </Style>
@@ -287,7 +293,7 @@
                             <Button Style="{StaticResource GhostButton}" HorizontalAlignment="Stretch"
                                     Command="{Binding ToggleSidebarCommand}">
                                 <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="◀" FontSize="14" Foreground="{DynamicResource IconPrimaryBrush}"/>
+                                    <TextBlock Text="{StaticResource IconBack}" FontFamily="{StaticResource IconFont}" FontSize="13" Foreground="{DynamicResource IconPrimaryBrush}"/>
                                     <TextBlock Text="  Collapse" FontSize="12" Margin="8,0,0,0"
                                                Visibility="{Binding IsSidebarExpanded, Converter={StaticResource BoolVis}}"/>
                                 </StackPanel>

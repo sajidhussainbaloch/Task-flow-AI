@@ -18,6 +18,9 @@ public partial class MainWindow : Window
     private readonly NotificationService _notificationService;
     private readonly IAppPreferencesService _preferencesService;
     private readonly ThemeService _themeService;
+    private bool _isPseudoMaximized;
+    private bool _isHandlingStateChange;
+    private Rect _restoreBounds;
     public NavigationViewModel ViewModel { get; }
 
     public MainWindow(NavigationViewModel viewModel, WindowService windowService, NotificationService notificationService, IAppPreferencesService preferencesService, ThemeService themeService)
@@ -130,7 +133,29 @@ public partial class MainWindow : Window
     // ══════════ Window State → Chrome Adaptation ══════════
     private void OnWindowStateChanged(object? sender, EventArgs e)
     {
+        if (_isHandlingStateChange)
+            return;
+
+        if (WindowState == WindowState.Minimized)
+            return;
+
         if (WindowState == WindowState.Maximized)
+        {
+            _isHandlingStateChange = true;
+            WindowState = WindowState.Normal;
+            ToggleMaximizeRestore();
+            _isHandlingStateChange = false;
+        }
+        else
+        {
+            ApplyWindowChrome(false);
+            _isPseudoMaximized = false;
+        }
+    }
+
+    private void ApplyWindowChrome(bool isMaximized)
+    {
+        if (isMaximized)
         {
             MainBorder.Margin = new Thickness(0);
             MainBorder.CornerRadius = new CornerRadius(0);
@@ -155,6 +180,49 @@ public partial class MainWindow : Window
             SidebarBorder.CornerRadius = new CornerRadius(0, 0, 0, 14);
             MaximizeBtn.Content = "□";
         }
+    }
+
+    private Rect GetCurrentMonitorWorkArea()
+    {
+        var handle = new WindowInteropHelper(this).Handle;
+        var mi = new MONITORINFO { cbSize = Marshal.SizeOf(typeof(MONITORINFO)) };
+        var monitor = MonitorFromWindow(handle, 0x00000002);
+
+        if (monitor != IntPtr.Zero && GetMonitorInfo(monitor, ref mi))
+        {
+            return new Rect(
+                mi.rcWork.Left,
+                mi.rcWork.Top,
+                mi.rcWork.Right - mi.rcWork.Left,
+                mi.rcWork.Bottom - mi.rcWork.Top);
+        }
+
+        return SystemParameters.WorkArea;
+    }
+
+    private void ToggleMaximizeRestore()
+    {
+        if (!_isPseudoMaximized)
+        {
+            _restoreBounds = new Rect(Left, Top, Width, Height);
+            var workArea = GetCurrentMonitorWorkArea();
+            WindowState = WindowState.Normal;
+            Left = workArea.Left;
+            Top = workArea.Top;
+            Width = workArea.Width;
+            Height = workArea.Height;
+            _isPseudoMaximized = true;
+            ApplyWindowChrome(true);
+            return;
+        }
+
+        WindowState = WindowState.Normal;
+        Left = _restoreBounds.Left;
+        Top = _restoreBounds.Top;
+        Width = _restoreBounds.Width;
+        Height = _restoreBounds.Height;
+        _isPseudoMaximized = false;
+        ApplyWindowChrome(false);
     }
 
     /// <summary>
@@ -227,7 +295,14 @@ public partial class MainWindow : Window
         if (e.ClickCount == 2)
             MaximizeButton_Click(sender, new RoutedEventArgs());
         else
+        {
+            if (_isPseudoMaximized)
+            {
+                ToggleMaximizeRestore();
+            }
+
             DragMove();
+        }
     }
 
     // ══════════ Window Controls ══════════
@@ -238,7 +313,7 @@ public partial class MainWindow : Window
 
     private void MaximizeButton_Click(object sender, RoutedEventArgs e)
     {
-        WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
+        ToggleMaximizeRestore();
     }
 
     private void CloseButton_Click(object sender, RoutedEventArgs e)

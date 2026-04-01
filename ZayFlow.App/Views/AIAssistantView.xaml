@@ -107,7 +107,11 @@
                                                                     Padding="18,16" MinHeight="82">
                                                                 <StackPanel>
                                                                     <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
-                                                                        <TextBlock Text="📂" FontSize="20" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                                                        <Border Width="28" Height="28" CornerRadius="8"
+                                                                                Background="{DynamicResource AccentSubtleBrush}" Margin="0,0,8,0">
+                                                                            <TextBlock Text="{StaticResource IconFolder}" FontFamily="{StaticResource IconFont}" FontSize="15"
+                                                                                       Foreground="{DynamicResource AccentBrush}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                                        </Border>
                                                                         <TextBlock Text="Organize Downloads" FontSize="14" FontWeight="SemiBold"
                                                                                    Foreground="{DynamicResource PrimaryTextBrush}" VerticalAlignment="Center"/>
                                                                     </StackPanel>
@@ -144,7 +148,11 @@
                                                                     Padding="18,16" MinHeight="82">
                                                                 <StackPanel>
                                                                     <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
-                                                                        <TextBlock Text="🧹" FontSize="20" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                                                        <Border Width="28" Height="28" CornerRadius="8"
+                                                                                Background="{DynamicResource WarningSubtleBrush}" Margin="0,0,8,0">
+                                                                            <TextBlock Text="{StaticResource IconTrash}" FontFamily="{StaticResource IconFont}" FontSize="15"
+                                                                                       Foreground="{DynamicResource WarningBrush}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                                        </Border>
                                                                         <TextBlock Text="Clean My PC" FontSize="14" FontWeight="SemiBold"
                                                                                    Foreground="{DynamicResource PrimaryTextBrush}" VerticalAlignment="Center"/>
                                                                     </StackPanel>
@@ -181,7 +189,11 @@
                                                                     Padding="18,16" MinHeight="82">
                                                                 <StackPanel>
                                                                     <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
-                                                                        <TextBlock Text="🔍" FontSize="20" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                                                        <Border Width="28" Height="28" CornerRadius="8"
+                                                                                Background="{DynamicResource InfoSubtleBrush}" Margin="0,0,8,0">
+                                                                            <TextBlock Text="{StaticResource IconSearch}" FontFamily="{StaticResource IconFont}" FontSize="15"
+                                                                                       Foreground="{DynamicResource InfoBrush}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                                        </Border>
                                                                         <TextBlock Text="Find Large Files" FontSize="14" FontWeight="SemiBold"
                                                                                    Foreground="{DynamicResource PrimaryTextBrush}" VerticalAlignment="Center"/>
                                                                     </StackPanel>
@@ -218,7 +230,11 @@
                                                                     Padding="18,16" MinHeight="82">
                                                                 <StackPanel>
                                                                     <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
-                                                                        <TextBlock Text="💾" FontSize="20" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                                                        <Border Width="28" Height="28" CornerRadius="8"
+                                                                                Background="{DynamicResource SuccessSubtleBrush}" Margin="0,0,8,0">
+                                                                            <TextBlock Text="{StaticResource IconSave}" FontFamily="{StaticResource IconFont}" FontSize="15"
+                                                                                       Foreground="{DynamicResource SuccessBrush}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                                        </Border>
                                                                         <TextBlock Text="Backup Files" FontSize="14" FontWeight="SemiBold"
                                                                                    Foreground="{DynamicResource PrimaryTextBrush}" VerticalAlignment="Center"/>
                                                                     </StackPanel>
@@ -301,6 +317,38 @@
                                                        Foreground="{DynamicResource PrimaryTextBrush}" VerticalAlignment="Center"/>
                                             <TextBlock Text="{Binding TimeText}" FontSize="10" Margin="10,0,0,0"
                                                        Foreground="{DynamicResource TertiaryTextBrush}" VerticalAlignment="Center"/>
+                                            <!-- Copy button -->
+                                            <Button ToolTip="Copy response" Cursor="Hand"
+                                                    Tag="{Binding Content}"
+                                                    Click="CopyMessage_Click"
+                                                    Margin="8,0,0,0" VerticalAlignment="Center">
+                                                <Button.Style>
+                                                    <Style TargetType="Button">
+                                                        <Setter Property="Background" Value="Transparent"/>
+                                                        <Setter Property="BorderThickness" Value="0"/>
+                                                        <Setter Property="Padding" Value="4"/>
+                                                        <Setter Property="Opacity" Value="0.45"/>
+                                                        <Setter Property="Template">
+                                                            <Setter.Value>
+                                                                <ControlTemplate TargetType="Button">
+                                                                    <Border x:Name="CopyBd" Background="{TemplateBinding Background}"
+                                                                            CornerRadius="6" Padding="{TemplateBinding Padding}">
+                                                                        <TextBlock Text="{StaticResource IconCopy}" FontFamily="{StaticResource IconFont}"
+                                                                                   FontSize="13" Foreground="{DynamicResource SecondaryTextBrush}"
+                                                                                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                                    </Border>
+                                                                    <ControlTemplate.Triggers>
+                                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                                            <Setter Property="Opacity" Value="1"/>
+                                                                            <Setter TargetName="CopyBd" Property="Background" Value="{DynamicResource SurfaceBrush}"/>
+                                                                        </Trigger>
+                                                                    </ControlTemplate.Triggers>
+                                                                </ControlTemplate>
+                                                            </Setter.Value>
+                                                        </Setter>
+                                                    </Style>
+                                                </Button.Style>
+                                            </Button>
                                         </StackPanel>
                                         <controls:MarkdownViewer MarkdownText="{Binding Content}" Margin="38,0,0,0"/>
                                     </StackPanel>

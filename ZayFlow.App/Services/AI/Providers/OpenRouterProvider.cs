@@ -130,7 +130,7 @@ public class OpenRouterProvider : IAIProvider
                 Model = _model,
                 Messages = messages.ToArray(),
                 Temperature = 0.7,
-                MaxTokens = 8000,
+                MaxTokens = 16000,
                 TopP = 1,
                 Stream = false
             };
@@ -370,14 +370,15 @@ You are the backbone of a premium productivity app. Users pay for you. Be useful
 - 'list running processes' / 'top memory processes' / 'end process notepad' → process_action (set action correctly; requiresConfirmation=true for kill)
 - 'hi' / 'hello' / 'what can you do?' → chat
 
-## CODE GENERATION RULES (for create_file):
-- ALWAYS generate COMPLETE, WORKING, PRODUCTION-QUALITY code. Never stubs.
-- Include imports, main functions, proper structure, comments.
-- For 'python calculator' → a full GUI calculator using tkinter, not a CLI toy.
+## CODE GENERATION RULES (create_file intent):
+- parameters.content MUST contain the ENTIRE complete source code — every function fully implemented, all imports, main entry point, error handling, comments. READY TO RUN.
+- NEVER use placeholders: '# ...', '// rest of code', '// TODO', '...' — every function body must be FULLY written out.
+- If a program would be very long, write a SIMPLER but FULLY WORKING version rather than a truncated one.
+- For 'python calculator' → full GUI calculator using tkinter with all buttons, operations, display. Not a stub.
 - For 'HTML landing page' → complete HTML with CSS, responsive, modern.
-- For 'JS todo app' → full working app with local storage.
-- The code should be ready to run. Users are paying for quality.
-- Set language parameter correctly so the system creates the right file extension.
+- Parameters.content value MUST be a single-line JSON string using \n for newlines. NEVER put literal line breaks inside JSON string values.
+- Set language parameter correctly for file extension.
+- Put ALL source code ONLY in parameters.content. In message, include concise run instructions, not code.
 
 ## PATH RULES:
 - Use SIMPLE folder names: Downloads, Desktop, Documents, Pictures, Videos
@@ -395,21 +396,30 @@ You are the backbone of a premium productivity app. Users pay for you. Be useful
     {
         try
         {
-            var jsonText = jsonResponse;
-            if (jsonText.Contains("```json"))
+            var jsonText = jsonResponse.Trim();
+
+            if (jsonText.StartsWith("```"))
             {
-                jsonText = jsonText.Split("```json")[1].Split("```")[0];
-            }
-            else if (jsonText.Contains("```"))
-            {
-                var parts = jsonText.Split("```");
-                if (parts.Length >= 2)
-                {
-                    jsonText = parts[1];
-                }
+                var firstNewline = jsonText.IndexOf('\n');
+                if (firstNewline > 0)
+                    jsonText = jsonText[(firstNewline + 1)..];
+
+                var lastFence = jsonText.LastIndexOf("```");
+                if (lastFence > 0)
+                    jsonText = jsonText[..lastFence];
             }
 
             jsonText = jsonText.Trim();
+
+            var firstBrace = jsonText.IndexOf('{');
+            var lastBrace = jsonText.LastIndexOf('}');
+            if (firstBrace >= 0 && lastBrace > firstBrace)
+            {
+                jsonText = jsonText[firstBrace..(lastBrace + 1)];
+            }
+
+            // LLMs sometimes emit literal newlines/tabs inside JSON string values — fix them
+            jsonText = RepairJsonControlChars(jsonText);
 
             var parsed = JsonSerializer.Deserialize<JsonElement>(jsonText);
 
@@ -423,7 +433,9 @@ You are the backbone of a premium productivity app. Users pay for you. Be useful
                     : "",
                 RequiresConfirmation = parsed.TryGetProperty("requiresConfirmation", out var req)
                     && req.GetBoolean(),
-                Parameters = ParseParameters(parsed.GetProperty("parameters")),
+                Parameters = parsed.TryGetProperty("parameters", out var parms)
+                    ? ParseParameters(parms)
+                    : new Dictionary<string, object>(),
                 TokenCost = parsed.TryGetProperty("tokenCost", out var cost)
                     ? cost.GetInt32()
                     : 1
@@ -442,12 +454,48 @@ You are the backbone of a premium productivity app. Users pay for you. Be useful
         }
     }
 
+    /// <summary>
+    /// Fix literal newlines/tabs inside JSON string values that LLMs sometimes produce.
+    /// </summary>
+    private static string RepairJsonControlChars(string json)
+    {
+        var sb = new System.Text.StringBuilder(json.Length + 200);
+        bool inString = false;
+        for (int i = 0; i < json.Length; i++)
+        {
+            char c = json[i];
+            if (c == '"')
+            {
+                int bs = 0;
+                for (int j = i - 1; j >= 0 && json[j] == '\\'; j--) bs++;
+                if (bs % 2 == 0) inString = !inString;
+                sb.Append(c);
+            }
+            else if (inString)
+            {
+                if (c == '\n') sb.Append("\\n");
+                else if (c == '\r') { /* skip */ }
+                else if (c == '\t') sb.Append("\\t");
+                else sb.Append(c);
+            }
+            else sb.Append(c);
+        }
+        return sb.ToString();
+    }
+
     private Dictionary<string, object> ParseParameters(JsonElement parametersElement)
     {
         var parameters = new Dictionary<string, object>();
         foreach (var property in parametersElement.EnumerateObject())
         {
-            parameters[property.Name] = property.Value.GetString() ?? "";
+            parameters[property.Name] = property.Value.ValueKind switch
+            {
+                JsonValueKind.String => property.Value.GetString() ?? "",
+                JsonValueKind.Number => property.Value.GetRawText(),
+                JsonValueKind.True => "true",
+                JsonValueKind.False => "false",
+                _ => property.Value.GetRawText()
+            };
         }
         return parameters;
     }

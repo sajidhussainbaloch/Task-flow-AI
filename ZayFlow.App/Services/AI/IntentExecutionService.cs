@@ -32,12 +32,12 @@ public class IntentExecutionService
     private HubHandler? _hubHandler;
     private static readonly HashSet<string> ForbiddenPaths = new(StringComparer.OrdinalIgnoreCase)
     {
-        "C:\\Windows",
-        "C:\\Program Files",
-        "C:\\Program Files (x86)",
-        "C:\\System32",
-        "C:\\SysWOW64",
-        "C:\\ProgramData"
+        Environment.GetFolderPath(Environment.SpecialFolder.Windows),
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "System32"),
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "SysWOW64"),
+        Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
+        Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86),
+        Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData)
     };
 
     public IntentExecutionService(IFileActionService fileService, ISystemActionService systemService, DocumentCreationService docService, ILogger<IntentExecutionService> logger, DownloadManager downloadManager)
@@ -253,7 +253,7 @@ public class IntentExecutionService
         }
         if (Directory.Exists(path))
         {
-            var fileCount = Directory.GetFiles(path, "*", SearchOption.AllDirectories).Length;
+            var fileCount = SafeEnumerateFiles(path).Count();
             return $"🗑️ Will delete folder: {Path.GetFileName(path)}\n   Contains: {fileCount} files\n   → Moved to Recycle Bin (recoverable)";
         }
         return $"⚠️ Path not found: {path}";
@@ -326,6 +326,25 @@ public class IntentExecutionService
         try
         {
             _logger.LogInformation($"[EXECUTION] Intent={response.Intent}; Parameters={string.Join(",", response.Parameters.Select(kvp => $"{kvp.Key}={kvp.Value}"))}");
+
+            // ── HARD SAFETY BLOCK ── reject any intent that references system-critical paths
+            var pathKeys = new[] { "folderPath", "filePath", "sourcePath", "destination", "path", "source", "target" };
+            foreach (var key in pathKeys)
+            {
+                if (response.Parameters.TryGetValue(key, out var val) && val != null)
+                {
+                    var resolved = ResolvePath(val.ToString() ?? "");
+                    if (!ValidatePath(val.ToString() ?? ""))
+                    {
+                        _logger.LogWarning($"[SAFETY] Blocked intent '{response.Intent}' targeting protected path: {resolved}");
+                        return new ActionResult
+                        {
+                            Success = false,
+                            Message = $"🛡️ Safety block: Cannot operate on protected system path.\nPath: {resolved}\n\nThis path is protected to prevent system damage."
+                        };
+                    }
+                }
+            }
             
             return response.Intent switch
             {
@@ -578,7 +597,36 @@ public class IntentExecutionService
             return false;
         }
 
-        return !ForbiddenPaths.Any(forbidden => fullPath.StartsWith(forbidden, StringComparison.OrdinalIgnoreCase));
+        return !ForbiddenPaths.Any(forbidden =>
+            !string.IsNullOrEmpty(forbidden) &&
+            fullPath.StartsWith(forbidden, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// Crash-safe file enumeration that skips inaccessible directories and files.
+    /// Replaces Directory.GetFiles(..., SearchOption.AllDirectories) which throws on permission errors.
+    /// </summary>
+    private static IEnumerable<string> SafeEnumerateFiles(string path, string pattern = "*", bool recurse = true)
+    {
+        return Directory.EnumerateFiles(path, pattern, new EnumerationOptions
+        {
+            IgnoreInaccessible = true,
+            RecurseSubdirectories = recurse,
+            AttributesToSkip = FileAttributes.ReparsePoint
+        });
+    }
+
+    /// <summary>
+    /// Crash-safe directory enumeration that skips inaccessible entries.
+    /// </summary>
+    private static IEnumerable<string> SafeEnumerateDirectories(string path, string pattern = "*", bool recurse = true)
+    {
+        return Directory.EnumerateDirectories(path, pattern, new EnumerationOptions
+        {
+            IgnoreInaccessible = true,
+            RecurseSubdirectories = recurse,
+            AttributesToSkip = FileAttributes.ReparsePoint
+        });
     }
 
     private async Task<ActionResult> ExecuteRenameAsync(Dictionary<string, object> parameters, CancellationToken ct)
@@ -756,7 +804,7 @@ public class IntentExecutionService
 
         try
         {
-            var files = Directory.GetFiles(path, "*", SearchOption.AllDirectories)
+            var files = SafeEnumerateFiles(path)
                 .Select(f => new FileInfo(f))
                 .Where(f => f.Length >= minSizeKB * 1024)
                 .ToList();
@@ -832,7 +880,7 @@ public class IntentExecutionService
         try
         {
             var di = new DirectoryInfo(path);
-            var allFiles = di.GetFiles("*", SearchOption.AllDirectories).ToList();
+            var allFiles = di.EnumerateFiles("*", new EnumerationOptions { IgnoreInaccessible = true, RecurseSubdirectories = true, AttributesToSkip = FileAttributes.ReparsePoint }).ToList();
             
             if (allFiles.Count == 0)
                 return Task.FromResult(new ActionResult { Success = true, Message = "📂 Folder is empty" });
@@ -1211,7 +1259,7 @@ public class IntentExecutionService
                 daysOld = parsed;
 
             var cutoff = DateTime.Now.AddDays(-daysOld);
-            var oldFiles = Directory.GetFiles(path, "*", SearchOption.AllDirectories)
+            var oldFiles = SafeEnumerateFiles(path)
                 .Select(f => new FileInfo(f))
                 .Where(f => f.LastWriteTime < cutoff)
                 .OrderBy(f => f.LastWriteTime)
@@ -1499,7 +1547,7 @@ public class IntentExecutionService
                 .Where(w => w.Length > 2)
                 .ToList();
 
-            var allFiles = Directory.GetFiles(searchPath, "*", SearchOption.AllDirectories);
+            var allFiles = SafeEnumerateFiles(searchPath).ToArray();
             var nameMatches = new List<(FileInfo File, string MatchType)>();
             var contentMatches = new List<(FileInfo File, string MatchType, string Snippet)>();
 
@@ -1724,7 +1772,7 @@ public class IntentExecutionService
                 return Task.FromResult(new ActionResult { Success = false, Message = $"Folder not found: {basePath}" });
 
             var importantExtensions = new[] { ".docx", ".xlsx", ".pdf", ".pptx", ".txt", ".jpg", ".png", ".mp4" };
-            var files = Directory.GetFiles(basePath, "*", SearchOption.AllDirectories)
+            var files = SafeEnumerateFiles(basePath)
                 .Select(f => new FileInfo(f))
                 .Where(f => importantExtensions.Contains(f.Extension.ToLowerInvariant()))
                 .OrderByDescending(f => f.LastWriteTime)
@@ -1793,8 +1841,8 @@ public class IntentExecutionService
                 if (Directory.Exists(customPath))
                 {
                     var size = GetFolderSize(customPath);
-                    var fileCount = Directory.GetFiles(customPath, "*", SearchOption.AllDirectories).Length;
-                    var oldFiles = Directory.GetFiles(customPath, "*", SearchOption.AllDirectories)
+                    var fileCount = SafeEnumerateFiles(customPath).Count();
+                    var oldFiles = SafeEnumerateFiles(customPath)
                         .Select(f => new FileInfo(f))
                         .Where(f => f.LastWriteTime < DateTime.Now.AddDays(-90))
                         .OrderBy(f => f.LastWriteTime)
@@ -1894,15 +1942,14 @@ public class IntentExecutionService
 
         try
         {
-            var searchOption = depth > 1 ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly;
-            var subdirs = Directory.GetDirectories(path, "*", searchOption)
+            var subdirs = SafeEnumerateDirectories(path, "*", depth > 1)
                 .Select(d => new DirectoryInfo(d))
                 .Where(di => depth > 1 || di.Parent?.FullName.Equals(path, StringComparison.OrdinalIgnoreCase) == true)
                 .Select(di => new
                 {
                     Name = Path.GetRelativePath(path, di.FullName).Replace('\\', '/'),
                     Size = GetFolderSize(di.FullName),
-                    FileCount = Directory.GetFiles(di.FullName, "*", SearchOption.AllDirectories).Length
+                    FileCount = SafeEnumerateFiles(di.FullName).Count()
                 })
                 .OrderByDescending(x => x.Size)
                 .Take(20)
@@ -1941,7 +1988,7 @@ public class IntentExecutionService
         try
         {
             return Directory.Exists(path)
-                ? Directory.GetFiles(path, "*", SearchOption.AllDirectories).Sum(f => new FileInfo(f).Length)
+                ? SafeEnumerateFiles(path).Sum(f => { try { return new FileInfo(f).Length; } catch { return 0L; } })
                 : 0;
         }
         catch
@@ -1965,8 +2012,21 @@ public class IntentExecutionService
         var language = parameters.TryGetValue("language", out var lang) ? lang?.ToString()?.ToLowerInvariant() ?? "" : "";
         var savePath = parameters.TryGetValue("savePath", out var sp) ? sp?.ToString() ?? "Desktop" : "Desktop";
 
-        // If no content from parameters, use the AI message content
-        if (string.IsNullOrWhiteSpace(content)) content = aiContent;
+        // SAFETY: Only use AI message as fallback if it actually looks like code.
+        // Never write the friendly chat message as file content.
+        if (string.IsNullOrWhiteSpace(content))
+        {
+            // Check if aiContent looks like actual code (contains typical code indicators)
+            var looksLikeCode = !string.IsNullOrWhiteSpace(aiContent) &&
+                (aiContent.Contains('{') || aiContent.Contains("import ") || aiContent.Contains("def ") ||
+                 aiContent.Contains("class ") || aiContent.Contains("#include") || aiContent.Contains("function ") ||
+                 aiContent.Contains("using ") || aiContent.Contains("package ") || aiContent.Contains("<!DOCTYPE") ||
+                 aiContent.Contains("<html"));
+            if (looksLikeCode)
+                content = aiContent;
+            else
+                return new ActionResult { Success = false, Message = "No code content was generated. Please try again with a more specific request." };
+        }
 
         // Auto-detect extension from language if fileName doesn't have one
         if (string.IsNullOrWhiteSpace(fileName))
@@ -2004,10 +2064,16 @@ public class IntentExecutionService
             catch { /* ignore if no default app */ }
 
             _logger.LogInformation($"Created file: {filePath}");
+
+            // Build a result that shows the code preview in chat
+            var langTag = string.IsNullOrWhiteSpace(language) ? "" : language;
+            var codePreview = content.Length > 3000 ? content[..3000] + "\n// ... (truncated)" : content;
+            var message = $"✅ **File created:** `{fileName}`\n📂 **Location:** `{resolvedFolder}`\n📄 Opened in default editor.\n\n**Code:**\n```{langTag}\n{codePreview}\n```";
+
             return new ActionResult
             {
                 Success = true,
-                Message = $"✅ File created: {fileName}\n📂 Location: {resolvedFolder}\n📄 Opened in default editor."
+                Message = message
             };
         }
         catch (Exception ex)
@@ -2468,7 +2534,7 @@ public class IntentExecutionService
                     }
                 }, ct);
 
-                var count = Directory.GetFiles(extractDir, "*", SearchOption.AllDirectories).Length;
+                var count = SafeEnumerateFiles(extractDir).Count();
                 return new ActionResult
                 {
                     Success = true,
@@ -2495,7 +2561,7 @@ public class IntentExecutionService
 
                 if (Directory.Exists(sourcePath))
                 {
-                    var files = Directory.GetFiles(sourcePath, "*", SearchOption.AllDirectories);
+                    var files = SafeEnumerateFiles(sourcePath).ToArray();
                     var totalFiles = files.Length;
                     ReportProgress($"📦 Compressing {totalFiles} files...", 0, "📦");
 
@@ -4181,7 +4247,7 @@ Text to translate:
 
         if (action is "capture" or "save")
         {
-            var files = Directory.GetFiles(path, "*", SearchOption.AllDirectories)
+            var files = SafeEnumerateFiles(path)
                 .Select(f => new FileInfo(f))
                 .Select(fi => new Dictionary<string, object>
                 {
