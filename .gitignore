@@ -101,3 +101,8 @@ publish/
 project.lock.json
 project.fragment.lock.json
 artifacts/
+
+# Migration backup excludes
+.sdk-fallback/
+installer/installer-output/
+*.bak

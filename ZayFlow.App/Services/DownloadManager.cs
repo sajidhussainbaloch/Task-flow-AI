@@ -227,8 +227,22 @@ public class DownloadManager
 
         _dispatcher.Invoke(() => Downloads.Insert(0, item));
 
-        // Fire and forget — the download runs in the background
-        _ = Task.Run(() => ExecuteDownloadAsync(item));
+        // Fire and forget — the download runs in the background with error capture
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await ExecuteDownloadAsync(item);
+            }
+            catch (Exception ex)
+            {
+                _dispatcher.Invoke(() =>
+                {
+                    item.Status = DownloadStatus.Failed;
+                    item.StatusText = $"Failed: {ex.Message}";
+                });
+            }
+        });
 
         return item;
     }

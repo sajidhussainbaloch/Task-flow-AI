@@ -20,8 +20,8 @@ public sealed class AppPreferences
     public bool ShowRemainingTokens { get; set; } = true;
     public bool EnableOfflineIntelligence { get; set; } = true;
     public int TokenWarningThreshold { get; set; } = 10;
-    public string SelectedProvider { get; set; } = "Groq (Free)";
-    public string GroqApiKey { get; set; } = string.Empty;
+    public string SelectedProvider { get; set; } = "OpenRouter";
+    public string OpenRouterApiKey { get; set; } = string.Empty;
     public string SelectedTheme { get; set; } = "Dark";
     public string AccentColor { get; set; } = "#6366F1";
     public double FontSizeScale { get; set; } = 1.0;
@@ -36,6 +36,13 @@ public sealed class AppPreferences
     public bool HasCompletedFirstAIAssistantUse { get; set; } = false;
     public bool HasDismissedActionCards { get; set; } = false;
     public bool IsAutoModeEnabled { get; set; } = false;
+    public string DefaultWorkspaceRoot { get; set; } = string.Empty;
+    public bool EnableImagePaste { get; set; } = true;
+    public bool EnableStreamingResponses { get; set; } = true;
+    public bool UseLocalOcrFirst { get; set; } = true;
+    public string PreferredCodingModel { get; set; } = "anthropic/claude-opus-4";
+    public string PreferredVisionModel { get; set; } = "anthropic/claude-opus-4";
+    public bool EnableArtifactPane { get; set; } = true;
 }
 
 public sealed class ChatSessionHistoryRecord
@@ -52,6 +59,11 @@ public sealed class ChatMessageRecord
     public string Content { get; set; } = string.Empty;
     public bool IsUser { get; set; }
     public DateTime Timestamp { get; set; } = DateTime.Now;
+    public string MessageKind { get; set; } = "chat";
+    public List<string> AttachmentIds { get; set; } = new();
+    public List<string> ArtifactIds { get; set; } = new();
+    public string ToolTraceSummary { get; set; } = string.Empty;
+    public string WorkspaceRoot { get; set; } = string.Empty;
 }
 
 public sealed class CommandUsageRecord
@@ -180,7 +192,7 @@ public sealed class AppPreferencesService : IAppPreferencesService
             EnableOfflineIntelligence = source.EnableOfflineIntelligence,
             TokenWarningThreshold = source.TokenWarningThreshold,
             SelectedProvider = source.SelectedProvider,
-            GroqApiKey = source.GroqApiKey,
+            OpenRouterApiKey = source.OpenRouterApiKey,
             SelectedLanguage = source.SelectedLanguage,
             SelectedTheme = source.SelectedTheme,
             AccentColor = source.AccentColor,
@@ -202,7 +214,12 @@ public sealed class AppPreferencesService : IAppPreferencesService
                         {
                             Content = m.Content,
                             IsUser = m.IsUser,
-                            Timestamp = m.Timestamp
+                            Timestamp = m.Timestamp,
+                            MessageKind = m.MessageKind,
+                            AttachmentIds = m.AttachmentIds.ToList(),
+                            ArtifactIds = m.ArtifactIds.ToList(),
+                            ToolTraceSummary = m.ToolTraceSummary,
+                            WorkspaceRoot = m.WorkspaceRoot
                         })
                         .ToList()
                 })
@@ -227,7 +244,14 @@ public sealed class AppPreferencesService : IAppPreferencesService
                 .ToList(),
             HasCompletedFirstAIAssistantUse = source.HasCompletedFirstAIAssistantUse,
             HasDismissedActionCards = source.HasDismissedActionCards,
-            IsAutoModeEnabled = source.IsAutoModeEnabled
+            IsAutoModeEnabled = source.IsAutoModeEnabled,
+            DefaultWorkspaceRoot = source.DefaultWorkspaceRoot,
+            EnableImagePaste = source.EnableImagePaste,
+            EnableStreamingResponses = source.EnableStreamingResponses,
+            UseLocalOcrFirst = source.UseLocalOcrFirst,
+            PreferredCodingModel = source.PreferredCodingModel,
+            PreferredVisionModel = source.PreferredVisionModel,
+            EnableArtifactPane = source.EnableArtifactPane
         };
     }
 }

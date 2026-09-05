@@ -16,7 +16,7 @@ public class SettingsViewModel : ViewModelBase
     private readonly WindowService _windowService;
     private readonly IAppPreferencesService _preferencesService;
     private readonly IAIService? _aiService;
-    private readonly GroqProvider? _groqProvider;
+    private readonly OpenRouterProvider? _openRouterProvider;
     private readonly IActionAuditService? _actionAuditService;
     private readonly ILogger<SettingsViewModel>? _logger;
 
@@ -46,9 +46,16 @@ public class SettingsViewModel : ViewModelBase
     private bool _privacyMode = true;
     private bool _disableFileUpload;
     private bool _requireFileUploadConfirmation = true;
+    private string _defaultWorkspaceRoot = string.Empty;
+    private bool _enableImagePaste = true;
+    private bool _enableStreamingResponses = true;
+    private bool _useLocalOcrFirst = true;
+    private string _preferredCodingModel = "anthropic/claude-opus-4";
+    private string _preferredVisionModel = "anthropic/claude-opus-4";
+    private bool _enableArtifactPane = true;
     private int _tokenWarningThreshold = 10;
-    private string _selectedProvider = "Groq (Free)";
-    private string _groqApiKey = string.Empty;
+    private string _selectedProvider = "OpenRouter";
+    private string _openRouterApiKey = string.Empty;
     private bool _scheduledTasksEnabled;
     private bool _enableAutomationEngine = true;
     private bool _enableBackgroundTasks = true;
@@ -65,7 +72,7 @@ public class SettingsViewModel : ViewModelBase
         WindowService windowService,
         IAppPreferencesService preferencesService,
         IAIService? aiService = null,
-        GroqProvider? groqProvider = null,
+        OpenRouterProvider? openRouterProvider = null,
         IActionAuditService? actionAuditService = null,
         ILogger<SettingsViewModel>? logger = null)
     {
@@ -74,7 +81,7 @@ public class SettingsViewModel : ViewModelBase
         _windowService = windowService;
         _preferencesService = preferencesService;
         _aiService = aiService;
-        _groqProvider = groqProvider;
+        _openRouterProvider = openRouterProvider;
         _actionAuditService = actionAuditService;
         _logger = logger;
 
@@ -92,7 +99,7 @@ public class SettingsViewModel : ViewModelBase
         AccentColors = new ObservableCollection<string> { "#6366F1", "#8B5CF6", "#EC4899", "#EF4444", "#F59E0B", "#10B981", "#3B82F6", "#06B6D4" };
         
         // Initialize AI providers
-        AvailableProviders = new ObservableCollection<string> { "Groq (Free)" };
+        AvailableProviders = new ObservableCollection<string> { "OpenRouter" };
 
         ResetMemoryCommand = new RelayCommand(_ => OnResetMemory());
         UpgradeCommand = new RelayCommand(_ => OnUpgrade());
@@ -251,17 +258,17 @@ public class SettingsViewModel : ViewModelBase
         }
     }
 
-    public string GroqApiKey
+    public string OpenRouterApiKey
     {
-        get => _groqApiKey;
+        get => _openRouterApiKey;
         set
         {
-            if (SetProperty(ref _groqApiKey, value))
+            if (SetProperty(ref _openRouterApiKey, value))
             {
-                if (_groqProvider != null && !string.IsNullOrWhiteSpace(value))
+                if (_openRouterProvider != null && !string.IsNullOrWhiteSpace(value))
                 {
-                    _groqProvider.Initialize(value);
-                    _notificationService.ShowSuccess("API Key Configured", "Groq provider is now ready");
+                    _openRouterProvider.Initialize(value);
+                    _notificationService.ShowSuccess("API Key Configured", "OpenRouter provider is now ready");
                 }
             }
         }
@@ -295,6 +302,48 @@ public class SettingsViewModel : ViewModelBase
     {
         get => _requireFileUploadConfirmation;
         set => SetProperty(ref _requireFileUploadConfirmation, value);
+    }
+
+    public string DefaultWorkspaceRoot
+    {
+        get => _defaultWorkspaceRoot;
+        set => SetProperty(ref _defaultWorkspaceRoot, value);
+    }
+
+    public bool EnableImagePaste
+    {
+        get => _enableImagePaste;
+        set => SetProperty(ref _enableImagePaste, value);
+    }
+
+    public bool EnableStreamingResponses
+    {
+        get => _enableStreamingResponses;
+        set => SetProperty(ref _enableStreamingResponses, value);
+    }
+
+    public bool UseLocalOcrFirst
+    {
+        get => _useLocalOcrFirst;
+        set => SetProperty(ref _useLocalOcrFirst, value);
+    }
+
+    public string PreferredCodingModel
+    {
+        get => _preferredCodingModel;
+        set => SetProperty(ref _preferredCodingModel, value);
+    }
+
+    public string PreferredVisionModel
+    {
+        get => _preferredVisionModel;
+        set => SetProperty(ref _preferredVisionModel, value);
+    }
+
+    public bool EnableArtifactPane
+    {
+        get => _enableArtifactPane;
+        set => SetProperty(ref _enableArtifactPane, value);
     }
 
     public bool ScheduledTasksEnabled
@@ -366,6 +415,13 @@ public class SettingsViewModel : ViewModelBase
             p.PrivacyMode = PrivacyMode;
             p.DisableFileUpload = DisableFileUpload;
             p.RequireFileUploadConfirmation = RequireFileUploadConfirmation;
+            p.DefaultWorkspaceRoot = DefaultWorkspaceRoot;
+            p.EnableImagePaste = EnableImagePaste;
+            p.EnableStreamingResponses = EnableStreamingResponses;
+            p.UseLocalOcrFirst = UseLocalOcrFirst;
+            p.PreferredCodingModel = PreferredCodingModel;
+            p.PreferredVisionModel = PreferredVisionModel;
+            p.EnableArtifactPane = EnableArtifactPane;
             p.RequireExecutionConfirmation = ConfirmBeforeExecute;
             p.EnableAutomationEngine = EnableAutomationEngine;
             p.EnableBackgroundTasks = EnableBackgroundTasks;
@@ -376,7 +432,7 @@ public class SettingsViewModel : ViewModelBase
             p.TokenWarningThreshold = TokenWarningThreshold;
             p.SelectedProvider = SelectedProvider;
             p.SelectedLanguage = SelectedLanguage;
-            p.GroqApiKey = GroqApiKey;
+            p.OpenRouterApiKey = OpenRouterApiKey;
             p.SelectedTheme = SelectedTheme;
             p.AccentColor = AccentColor;
             p.FontSizeScale = FontScale;
@@ -401,6 +457,13 @@ public class SettingsViewModel : ViewModelBase
         PrivacyMode = p.PrivacyMode;
         DisableFileUpload = p.DisableFileUpload;
         RequireFileUploadConfirmation = p.RequireFileUploadConfirmation;
+        DefaultWorkspaceRoot = p.DefaultWorkspaceRoot;
+        EnableImagePaste = p.EnableImagePaste;
+        EnableStreamingResponses = p.EnableStreamingResponses;
+        UseLocalOcrFirst = p.UseLocalOcrFirst;
+        PreferredCodingModel = p.PreferredCodingModel;
+        PreferredVisionModel = p.PreferredVisionModel;
+        EnableArtifactPane = p.EnableArtifactPane;
         ConfirmBeforeExecute = p.RequireExecutionConfirmation;
         EnableAutomationEngine = p.EnableAutomationEngine;
         EnableBackgroundTasks = p.EnableBackgroundTasks;
@@ -411,7 +474,7 @@ public class SettingsViewModel : ViewModelBase
         TokenWarningThreshold = p.TokenWarningThreshold;
         SelectedProvider = p.SelectedProvider;
         SelectedLanguage = p.SelectedLanguage;
-        GroqApiKey = p.GroqApiKey;
+        OpenRouterApiKey = p.OpenRouterApiKey;
         SelectedTheme = p.SelectedTheme;
         AccentColor = p.AccentColor;
         FontScale = p.FontSizeScale;
@@ -455,11 +518,11 @@ public class SettingsViewModel : ViewModelBase
 
     private void InitializeGroq()
     {
-        if (_groqProvider == null) return;
+        if (_openRouterProvider == null) return;
 
-        if (!string.IsNullOrWhiteSpace(GroqApiKey))
+        if (!string.IsNullOrWhiteSpace(OpenRouterApiKey))
         {
-            _groqProvider.Initialize(GroqApiKey);
+            _openRouterProvider.Initialize(OpenRouterApiKey);
         }
     }
 }

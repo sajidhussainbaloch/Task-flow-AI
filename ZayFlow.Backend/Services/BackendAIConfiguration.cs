@@ -4,7 +4,7 @@ using System.Text.Json;
 namespace ZayFlow.Backend.Services;
 
 /// <summary>
-/// Backend-side AI configuration. The Groq API key and model selection
+/// Backend-side AI configuration. The OpenRouter API key and model selection
 /// are controlled HERE, not in the frontend UI.
 /// 
 /// Configuration file location:
@@ -12,27 +12,27 @@ namespace ZayFlow.Backend.Services;
 /// 
 /// Example content:
 /// {
-///   "GroqApiKey": "gsk_YOUR_API_KEY_HERE",
-///   "Model": "llama-3.3-70b-versatile",
+///   "OpenRouterApiKey": "sk-or-v1-YOUR_API_KEY_HERE",
+///   "Model": "thudm/glm-4-plus",
 ///   "MaxTokensPerRequest": 8000,
 ///   "Temperature": 0.7
 /// }
 /// 
 /// You can also set the API key via environment variable:
-///   ZAYFLOW_GROQ_API_KEY=gsk_YOUR_API_KEY_HERE
+///   ZAYFLOW_OPENROUTER_API_KEY=sk-or-v1-YOUR_API_KEY_HERE
 /// </summary>
 public sealed class BackendAIConfig
 {
     /// <summary>
-    /// Groq API key. Get a free one at https://console.groq.com
+    /// OpenRouter API key. Get one at https://openrouter.ai/keys
     /// </summary>
-    public string GroqApiKey { get; set; } = string.Empty;
+    public string OpenRouterApiKey { get; set; } = string.Empty;
 
     /// <summary>
-    /// AI model to use. Default: llama-3.3-70b-versatile (free on Groq).
-    /// Other options: llama-3.1-8b-instant, mixtral-8x7b-32768
+    /// AI model to use. Default: thudm/glm-4-plus (GLM-4-Plus on OpenRouter).
+    /// Code model: anthropic/claude-opus-4
     /// </summary>
-    public string Model { get; set; } = "llama-3.3-70b-versatile";
+    public string Model { get; set; } = "thudm/glm-4-plus";
 
     /// <summary>
     /// Max tokens per AI request.
@@ -52,7 +52,7 @@ public sealed class BackendAIConfig
     /// <summary>
     /// Speed mode model (smaller, faster).
     /// </summary>
-    public string SpeedModeModel { get; set; } = "llama-3.1-8b-instant";
+    public string SpeedModeModel { get; set; } = "meta-llama/llama-3.3-70b-instruct:free";
 }
 
 /// <summary>
@@ -66,7 +66,7 @@ public interface IBackendAIConfiguration
 {
     BackendAIConfig GetConfig();
     void SaveConfig(BackendAIConfig config);
-    string ResolveGroqApiKey(string? fallbackFromPreferences = null);
+    string ResolveOpenRouterApiKey(string? fallbackFromPreferences = null);
 }
 
 public sealed class BackendAIConfigurationService : IBackendAIConfiguration
@@ -133,15 +133,15 @@ public sealed class BackendAIConfigurationService : IBackendAIConfiguration
     }
 
     /// <summary>
-    /// Resolves the Groq API key using priority order:
-    /// 1. Environment variable ZAYFLOW_GROQ_API_KEY
+    /// Resolves the OpenRouter API key using priority order:
+    /// 1. Environment variable ZAYFLOW_OPENROUTER_API_KEY
     /// 2. Backend config file (always reloads from disk)
     /// 3. Fallback from app preferences (user-entered)
     /// </summary>
-    public string ResolveGroqApiKey(string? fallbackFromPreferences = null)
+    public string ResolveOpenRouterApiKey(string? fallbackFromPreferences = null)
     {
         // Priority 1: Environment variable
-        var envKey = Environment.GetEnvironmentVariable("ZAYFLOW_GROQ_API_KEY");
+        var envKey = Environment.GetEnvironmentVariable("ZAYFLOW_OPENROUTER_API_KEY");
         if (!string.IsNullOrWhiteSpace(envKey))
             return envKey;
 
@@ -152,11 +152,11 @@ public sealed class BackendAIConfigurationService : IBackendAIConfiguration
             {
                 var json = File.ReadAllText(_configPath);
                 var config = JsonSerializer.Deserialize<BackendAIConfig>(json, JsonOptions);
-                if (config != null && !string.IsNullOrWhiteSpace(config.GroqApiKey))
+                if (config != null && !string.IsNullOrWhiteSpace(config.OpenRouterApiKey))
                 {
                     // Update cache with fresh data
                     lock (_lock) { _cached = config; }
-                    return config.GroqApiKey;
+                    return config.OpenRouterApiKey;
                 }
             }
         }

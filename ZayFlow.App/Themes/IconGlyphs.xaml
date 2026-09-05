@@ -30,5 +30,7 @@
     <system:String x:Key="IconQueue">&#xE8A5;</system:String>
     <system:String x:Key="IconGenerate">&#xE734;</system:String>
     <system:String x:Key="IconClose">&#xE711;</system:String>
+    <system:String x:Key="IconBack">&#xE72B;</system:String>
+    <system:String x:Key="IconCopy">&#xE8C8;</system:String>
 
 </ResourceDictionary>

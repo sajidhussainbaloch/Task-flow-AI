@@ -22,8 +22,8 @@
                                        HorizontalAlignment="Center" VerticalAlignment="Center">
                                 <TextBlock.Foreground>
                                     <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                                        <GradientStop Color="#6366F1" Offset="0"/>
-                                        <GradientStop Color="#A5B4FC" Offset="1"/>
+                                        <GradientStop Color="{StaticResource AccentColor}" Offset="0"/>
+                                        <GradientStop Color="{StaticResource SidebarItemActiveTextColor}" Offset="1"/>
                                     </LinearGradientBrush>
                                 </TextBlock.Foreground>
                             </TextBlock>
@@ -77,7 +77,7 @@
                         </Grid.ColumnDefinitions>
                         <TextBlock Text="AI Provider" FontWeight="SemiBold" FontSize="13"
                                    Foreground="{DynamicResource SecondaryTextBrush}"/>
-                        <TextBlock Grid.Column="1" Text="Groq (Llama 3.3 70B)" FontSize="13"
+                        <TextBlock Grid.Column="1" Text="OpenRouter (GLM-4-Plus / Claude Opus 4)" FontSize="13"
                                    Foreground="{DynamicResource PrimaryTextBrush}"/>
                     </Grid>
 
@@ -164,25 +164,25 @@
             <Border Style="{StaticResource PremiumCard}" Margin="0,0,0,24">
                 <StackPanel>
                     <TextBlock TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource SecondaryTextBrush}" LineHeight="22">
-                        <Run FontWeight="Bold" Foreground="{DynamicResource PrimaryTextBrush}">To use ZayFlow AI, configure your Groq API key:</Run>
+                        <Run FontWeight="Bold" Foreground="{DynamicResource PrimaryTextBrush}">To use ZayFlow AI, configure your OpenRouter API key:</Run>
                         <LineBreak/><LineBreak/>
-                        <Run FontWeight="SemiBold">Step 1: Get a Free API Key</Run>
+                        <Run FontWeight="SemiBold">Step 1: Get an API Key</Run>
                         <LineBreak/>
-                        <Run>Visit: https://console.groq.com</Run>
+                        <Run>Visit: https://openrouter.ai/keys</Run>
                         <LineBreak/>
-                        <Run>Sign up (free) and create a new API key</Run>
+                        <Run>Sign up and create a new API key</Run>
                         <LineBreak/><LineBreak/>
                         <Run FontWeight="SemiBold">Step 2: Enter Key in Settings</Run>
                         <LineBreak/>
-                        <Run>Go to Settings → AI &amp; Tokens → Groq API Key</Run>
+                        <Run>Go to Settings → AI &amp; Tokens → OpenRouter API Key</Run>
                         <LineBreak/>
                         <Run>Paste your key and click Save Settings</Run>
                         <LineBreak/><LineBreak/>
-                        <Run FontWeight="SemiBold">Model: Llama 3.3 70B (Versatile)</Run>
+                        <Run FontWeight="SemiBold">Models: GLM-4-Plus (Chat) + Claude Opus 4 (Code)</Run>
                         <LineBreak/>
-                        <Run>Ultra-fast inference, free tier with generous rate limits</Run>
+                        <Run>Smart routing — chat uses GLM-4-Plus, code tasks use Claude Opus 4</Run>
                         <LineBreak/><LineBreak/>
-                        <Run FontWeight="SemiBold">Free to use — no credit card needed!</Run>
+                        <Run FontWeight="SemiBold">Free models available — pay only for premium models!</Run>
                     </TextBlock>
                 </StackPanel>
             </Border>

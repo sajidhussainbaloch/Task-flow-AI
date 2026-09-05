@@ -5,6 +5,17 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              mc:Ignorable="d">
 
+    <UserControl.Resources>
+        <Style x:Key="TrustChipStyle" TargetType="Border">
+            <Setter Property="Background" Value="{DynamicResource SurfaceBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="999"/>
+            <Setter Property="Padding" Value="10,6"/>
+            <Setter Property="Margin" Value="0,0,8,0"/>
+        </Style>
+    </UserControl.Resources>
+
     <ScrollViewer Style="{StaticResource PremiumScrollViewer}" Padding="{StaticResource PagePadding}">
         <StackPanel>
 
@@ -13,6 +24,58 @@
                 <TextBlock Text="{Binding Greeting}" Style="{StaticResource HeadingXL}" Margin="0,0,0,6"/>
                 <TextBlock Text="Here's what's happening with your workflow today." Style="{StaticResource BodyText}"/>
             </StackPanel>
+
+            <!-- ═══════ HERO CARD ═══════ -->
+            <Border Style="{StaticResource GlassCardHover}" Margin="0,0,0,24" Padding="24">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="240"/>
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel Grid.Column="0" Margin="0,0,18,0">
+                        <TextBlock Text="Operate your PC with confidence" FontSize="28" FontWeight="Bold"
+                                   Foreground="{DynamicResource PrimaryTextBrush}" Margin="0,0,0,8"/>
+                        <TextBlock Text="ZayFlow combines AI guidance, safe previews, and fast desktop actions so your workspace feels clean, calm, and under control."
+                                   FontSize="13" LineHeight="22" TextWrapping="Wrap"
+                                   Foreground="{DynamicResource SecondaryTextBrush}" Margin="0,0,0,16"/>
+
+                        <StackPanel Orientation="Horizontal">
+                            <Border Style="{StaticResource TrustChipStyle}">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="{StaticResource IconConfirm}" Style="{StaticResource FluentIcon}" FontSize="12" Foreground="{DynamicResource SuccessBrush}" Margin="0,0,6,0"/>
+                                    <TextBlock Text="Safe previews" FontSize="11.5" Foreground="{DynamicResource SecondaryTextBrush}"/>
+                                </StackPanel>
+                            </Border>
+                            <Border Style="{StaticResource TrustChipStyle}">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="{StaticResource IconAI}" Style="{StaticResource FluentIcon}" FontSize="12" Foreground="{DynamicResource AccentBrush}" Margin="0,0,6,0"/>
+                                    <TextBlock Text="AI-powered" FontSize="11.5" Foreground="{DynamicResource SecondaryTextBrush}"/>
+                                </StackPanel>
+                            </Border>
+                            <Border Style="{StaticResource TrustChipStyle}">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="{StaticResource IconLightning}" Style="{StaticResource FluentIcon}" FontSize="12" Foreground="{DynamicResource WarningBrush}" Margin="0,0,6,0"/>
+                                    <TextBlock Text="Desktop-fast" FontSize="11.5" Foreground="{DynamicResource SecondaryTextBrush}"/>
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </StackPanel>
+
+                    <Border Grid.Column="1" CornerRadius="18" Padding="18" Background="{DynamicResource AccentSubtleBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1">
+                        <StackPanel>
+                            <TextBlock Text="Best next step" FontSize="11" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TertiaryTextBrush}" Margin="0,0,0,8"/>
+                            <TextBlock Text="Ask ZayFlow to organize downloads, review large files, or clean temp data — all with a preview before anything changes."
+                                       FontSize="13" LineHeight="21" TextWrapping="Wrap"
+                                       Foreground="{DynamicResource PrimaryTextBrush}" Margin="0,0,0,14"/>
+                            <Button Style="{StaticResource PrimaryButton}" Content="Launch AI Assistant"
+                                    HorizontalAlignment="Left" Padding="16,9"
+                                    Command="{Binding QuickActionCommand}" CommandParameter="Ask AI"/>
+                        </StackPanel>
+                    </Border>
+                </Grid>
+            </Border>
 
             <!-- ═══════ STATS CARDS ROW ═══════ -->
             <UniformGrid Columns="4" Margin="0,0,0,24">
@@ -89,7 +152,11 @@
             </UniformGrid>
 
             <!-- ═══════ QUICK ACTIONS ═══════ -->
-            <TextBlock Text="Quick Actions" Style="{StaticResource HeadingMD}" Margin="0,0,0,14"/>
+            <StackPanel Margin="0,0,0,14">
+                <TextBlock Text="Quick Actions" Style="{StaticResource HeadingMD}"/>
+                <TextBlock Text="High-confidence actions people expect first — fast, clear, and safe."
+                           Style="{StaticResource BodyText}" Margin="0,4,0,0"/>
+            </StackPanel>
             <UniformGrid Columns="4" Margin="0,0,0,28">
                 <Border Style="{StaticResource GlassCardHover}" Margin="0,0,12,0" Cursor="Hand"
                         MouseLeftButtonUp="QuickAction_Click" Tag="Ask AI">
@@ -97,7 +164,7 @@
                         <Border Width="48" Height="48" CornerRadius="12"
                                 Background="{DynamicResource AccentSubtleBrush}" Margin="0,0,0,10"
                                 HorizontalAlignment="Center">
-                            <TextBlock Text="{StaticResource IconDownload}" Style="{StaticResource FluentIconHover}" FontSize="22"/>
+                            <TextBlock Text="{StaticResource IconAI}" Style="{StaticResource FluentIconHover}" FontSize="22"/>
                         </Border>
                         <TextBlock Text="Ask AI" HorizontalAlignment="Center" FontWeight="SemiBold"
                                    Foreground="{DynamicResource PrimaryTextBrush}" FontSize="13"/>
@@ -112,7 +179,7 @@
                         <Border Width="48" Height="48" CornerRadius="12"
                                 Background="{DynamicResource WarningSubtleBrush}" Margin="0,0,0,10"
                                 HorizontalAlignment="Center">
-                            <TextBlock Text="{StaticResource IconTrash}" Style="{StaticResource FluentIconHover}" FontSize="22"/>
+                            <TextBlock Text="{StaticResource IconDocument}" Style="{StaticResource FluentIconHover}" FontSize="22"/>
                         </Border>
                         <TextBlock Text="Summarize" HorizontalAlignment="Center" FontWeight="SemiBold"
                                    Foreground="{DynamicResource PrimaryTextBrush}" FontSize="13"/>
@@ -127,7 +194,7 @@
                         <Border Width="48" Height="48" CornerRadius="12"
                                 Background="{DynamicResource SuccessSubtleBrush}" Margin="0,0,0,10"
                                 HorizontalAlignment="Center">
-                            <TextBlock Text="{StaticResource IconEdit}" Style="{StaticResource FluentIconHover}" FontSize="22"/>
+                            <TextBlock Text="{StaticResource IconFolder}" Style="{StaticResource FluentIconHover}" FontSize="22"/>
                         </Border>
                         <TextBlock Text="Organize" HorizontalAlignment="Center" FontWeight="SemiBold"
                                    Foreground="{DynamicResource PrimaryTextBrush}" FontSize="13"/>
@@ -142,7 +209,7 @@
                         <Border Width="48" Height="48" CornerRadius="12" Margin="0,0,0,10"
                                 HorizontalAlignment="Center"
                                 Background="{DynamicResource AccentGradientBrush}">
-                            <TextBlock Text="{StaticResource IconAI}" Style="{StaticResource FluentIconHover}" FontSize="22"/>
+                            <TextBlock Text="{StaticResource IconEdit}" Style="{StaticResource FluentIconHover}" FontSize="22" Foreground="White"/>
                         </Border>
                         <TextBlock Text="Create Note" HorizontalAlignment="Center" FontWeight="SemiBold"
                                    Foreground="{DynamicResource PrimaryTextBrush}" FontSize="13"/>

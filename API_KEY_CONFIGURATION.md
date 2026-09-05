@@ -8,15 +8,17 @@ ZayFlow AI is a local AI productivity command center that enables users to contr
 
 ---
 
-## Groq API Key Configuration
+## OpenRouter API Key Configuration
 
-ZayFlow AI uses the **Groq free API** with the Llama 3.3 model for fast, local-first inference.
+ZayFlow AI uses **OpenRouter** to access multiple AI models:
+- **GLM-4-Plus** (`thudm/glm-4-plus`) — for general chat and desktop actions
+- **Claude Opus 4** (`anthropic/claude-opus-4`) — for code generation, code review, and refactoring
 
-### Getting Your Free API Key
+### Getting Your API Key
 
-1. Visit **https://console.groq.com**
-2. Sign up for a free account
-3. Copy your API key (format: `gsk_...`)
+1. Visit **https://openrouter.ai/keys**
+2. Sign up for an account
+3. Create a new API key (format: `sk-or-v1-...`)
 4. Store it securely using one of the methods below
 
 ---
@@ -32,12 +34,12 @@ ZayFlow AI uses the **Groq free API** with the Llama 3.3 model for fast, local-f
 
 ```json
 {
-  "GroqApiKey": "gsk_YOUR_API_KEY_HERE",
-  "Model": "llama-3.3-70b-versatile",
+  "OpenRouterApiKey": "sk-or-v1-YOUR_API_KEY_HERE",
+  "Model": "thudm/glm-4-plus",
   "MaxTokensPerRequest": 8000,
   "Temperature": 0.7,
   "SpeedMode": false,
-  "SpeedModeModel": "llama-3.1-8b-instant"
+  "SpeedModeModel": "meta-llama/llama-3.3-70b-instruct:free"
 }
 ```
 
@@ -47,7 +49,6 @@ ZayFlow AI uses the **Groq free API** with the Llama 3.3 model for fast, local-f
 - Centralized configuration
 - Survives UI updates
 - Easy to manage multiple settings
-- Can be shared via configuration management tools
 
 ---
 
@@ -57,12 +58,12 @@ Set an environment variable on your system:
 
 **Windows (Command Prompt):**
 ```bash
-setx ZAYFLOW_GROQ_API_KEY gsk_YOUR_API_KEY_HERE
+setx ZAYFLOW_OPENROUTER_API_KEY sk-or-v1-YOUR_API_KEY_HERE
 ```
 
 **Windows (PowerShell - Admin):**
 ```powershell
-[System.Environment]::SetEnvironmentVariable('ZAYFLOW_GROQ_API_KEY', 'gsk_YOUR_API_KEY_HERE', 'User')
+[System.Environment]::SetEnvironmentVariable('ZAYFLOW_OPENROUTER_API_KEY', 'sk-or-v1-YOUR_API_KEY_HERE', 'User')
 ```
 
 **Windows (Environment Variables GUI):**
@@ -70,14 +71,14 @@ setx ZAYFLOW_GROQ_API_KEY gsk_YOUR_API_KEY_HERE
 2. Click **Advanced system settings**
 3. Click **Environment Variables**
 4. Under "User variables for [username]", click **New**
-5. Variable name: `ZAYFLOW_GROQ_API_KEY`
-6. Variable value: `gsk_YOUR_API_KEY_HERE`
+5. Variable name: `ZAYFLOW_OPENROUTER_API_KEY`
+6. Variable value: `sk-or-v1-YOUR_API_KEY_HERE`
 7. Click **OK** and restart ZayFlow
 
 **Advantages:**
 - Most secure method
 - Keeps key out of config files
-- Standard practices in CI/CD environments
+- Standard practice for CI/CD environments
 - Survives application reinstalls
 
 ---
@@ -87,7 +88,7 @@ setx ZAYFLOW_GROQ_API_KEY gsk_YOUR_API_KEY_HERE
 1. Open ZayFlow AI
 2. Navigate to **Settings** tab
 3. Go to **AI Configuration** section
-4. Paste your API key in the **Groq API Key** field
+4. Paste your API key in the **OpenRouter API Key** field
 5. Click **Save Settings**
 
 **Advantages:**
@@ -106,7 +107,7 @@ setx ZAYFLOW_GROQ_API_KEY gsk_YOUR_API_KEY_HERE
 
 ZayFlow resolves the API key in this order (first match wins):
 
-1. **Environment Variable**: `ZAYFLOW_GROQ_API_KEY` 
+1. **Environment Variable**: `ZAYFLOW_OPENROUTER_API_KEY` 
 2. **Backend Config File**: `%LOCALAPPDATA%\ZayFlow\backend-config.json`
 3. **App Preferences**: Settings Tab (UI entry)
 
@@ -120,12 +121,12 @@ The backend configuration file (`backend-config.json`) supports these options:
 
 ```json
 {
-  "GroqApiKey": "gsk_YOUR_API_KEY_HERE",
-  "Model": "llama-3.3-70b-versatile",
+  "OpenRouterApiKey": "sk-or-v1-YOUR_API_KEY_HERE",
+  "Model": "thudm/glm-4-plus",
   "MaxTokensPerRequest": 8000,
   "Temperature": 0.7,
   "SpeedMode": false,
-  "SpeedModeModel": "llama-3.1-8b-instant"
+  "SpeedModeModel": "meta-llama/llama-3.3-70b-instruct:free"
 }
 ```
 
@@ -133,26 +134,27 @@ The backend configuration file (`backend-config.json`) supports these options:
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `GroqApiKey` | string | (empty) | Your Groq API key. **Required**. |
-| `Model` | string | `llama-3.3-70b-versatile` | The AI model to use. Free on Groq. Other options: `llama-3.1-8b-instant`, `mixtral-8x7b-32768` |
+| `OpenRouterApiKey` | string | (empty) | Your OpenRouter API key. **Required**. |
+| `Model` | string | `thudm/glm-4-plus` | The default chat model. Code tasks route to `anthropic/claude-opus-4` automatically. |
 | `MaxTokensPerRequest` | int | `8000` | Maximum tokens per AI request (output limit). |
 | `Temperature` | double | `0.7` | AI creativity level: 0.0 (deterministic) to 1.0 (creative). |
 | `SpeedMode` | bool | `false` | Enable speed mode (uses faster, smaller model). |
-| `SpeedModeModel` | string | `llama-3.1-8b-instant` | The model to use when Speed Mode is enabled. |
+| `SpeedModeModel` | string | `meta-llama/llama-3.3-70b-instruct:free` | The model to use when Speed Mode is enabled. |
 
 ---
 
-## Available Groq Models
+## Available Models via OpenRouter
 
-Groq offers these free models:
+| Model | ID | Use Case |
+|-------|-----|----------|
+| GLM-4-Plus | `thudm/glm-4-plus` | Default chat — general purpose |
+| Claude Opus 4 | `anthropic/claude-opus-4` | Code generation, review, refactoring |
+| Llama 3.3 70B (Free) | `meta-llama/llama-3.3-70b-instruct:free` | Speed mode — lighter tasks |
+| Gemma 3 27B (Free) | `google/gemma-3-27b-it:free` | Free alternative |
+| Mistral Small (Free) | `mistralai/mistral-small-3.1-24b-instruct:free` | Free alternative |
+| Qwen 3 Coder (Free) | `qwen/qwen3-coder:free` | Free coding alternative |
 
-| Model | Speed | Quality | Use Case |
-|-------|-------|---------|----------|
-| `llama-3.3-70b-versatile` | ⚡ Moderate | ⭐⭐⭐⭐ Excellent | Default – best all-around |
-| `llama-3.1-8b-instant` | ⚡⚡ Very Fast | ⭐⭐⭐ Good | Speed-optimized, lighter tasks |
-| `mixtral-8x7b-32768` | ⚡ Fast | ⭐⭐⭐⭐ Good | Fast, capable reasoning |
-
-Change the `Model` field in `backend-config.json` to switch models.
+Change the `Model` field in `backend-config.json` to switch the default chat model.
 
 ---
 
@@ -162,7 +164,7 @@ Change the `Model` field in `backend-config.json` to switch models.
 1. Open ZayFlow AI
 2. Navigate to **Settings** tab
 3. Look at **AI Provider** field
-4. Should show: "Groq (Free) ✓ Connected"
+4. Should show: "OpenRouter ✓ Connected"
 
 ### Check Configuration File:
 ```powershell
@@ -171,26 +173,26 @@ cat $env:LOCALAPPDATA\ZayFlow\backend-config.json
 
 ### Check Environment Variable:
 ```powershell
-$env:ZAYFLOW_GROQ_API_KEY
+$env:ZAYFLOW_OPENROUTER_API_KEY
 ```
 
 ---
 
 ## Troubleshooting
 
-### "Groq API key not configured"
+### "OpenRouter API key not configured"
 - Verify the API key is present in one of the three locations
 - Restart the application after configuration
-- Check for typos in the API key (should start with `gsk_`)
+- Check for typos in the API key (should start with `sk-or-v1-`)
 
 ### "API Error 401"
 - Your API key is invalid or expired
-- Get a new key from https://console.groq.com
+- Get a new key from https://openrouter.ai/keys
 - Verify you copied the entire key
 
 ### "Network error"
 - Check your internet connection
-- Verify Groq servers are accessible: https://console.groq.com
+- Verify OpenRouter is accessible: https://openrouter.ai
 - Check firewall/proxy settings
 
 ### Configuration file not creating

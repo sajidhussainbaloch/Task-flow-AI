@@ -160,16 +160,30 @@ User message: {userMessage}";
     {
         try
         {
-            // Extract JSON from markdown code blocks if present
-            var jsonText = jsonResponse;
-            if (jsonText.Contains("```json"))
+            var jsonText = jsonResponse.Trim();
+
+            if (jsonText.StartsWith("```"))
             {
-                jsonText = jsonText.Split("```json")[1].Split("```")[0];
+                var firstNewline = jsonText.IndexOf('\n');
+                if (firstNewline > 0)
+                    jsonText = jsonText[(firstNewline + 1)..];
+
+                var lastFence = jsonText.LastIndexOf("```");
+                if (lastFence > 0)
+                    jsonText = jsonText[..lastFence];
             }
-            else if (jsonText.Contains("```"))
+
+            jsonText = jsonText.Trim();
+
+            var firstBrace = jsonText.IndexOf('{');
+            var lastBrace = jsonText.LastIndexOf('}');
+            if (firstBrace >= 0 && lastBrace > firstBrace)
             {
-                jsonText = jsonText.Split("```")[1].Split("```")[0];
+                jsonText = jsonText[firstBrace..(lastBrace + 1)];
             }
+
+            // LLMs sometimes emit literal newlines/tabs inside JSON string values — fix them
+            jsonText = RepairJsonControlChars(jsonText);
 
             var parsed = JsonSerializer.Deserialize<JsonElement>(jsonText);
             
@@ -184,7 +198,9 @@ User message: {userMessage}";
                 RequiresConfirmation = parsed.TryGetProperty("requiresConfirmation", out var req)
                     ? req.GetBoolean()
                     : false,
-                Parameters = ParseParameters(parsed.GetProperty("parameters")),
+                Parameters = parsed.TryGetProperty("parameters", out var parms)
+                    ? ParseParameters(parms)
+                    : new Dictionary<string, object>(),
                 TokenCost = parsed.TryGetProperty("tokenCost", out var cost)
                     ? cost.GetInt32()
                     : 1
@@ -195,11 +211,67 @@ User message: {userMessage}";
             return new AIResponse
             {
                 Success = true,
-                Message = jsonResponse,
+                Message = SanitizeRawResponse(jsonResponse),
                 Intent = "chat",
                 TokenCost = 1
             };
         }
+    }
+
+    /// <summary>
+    /// Attempts to extract a clean message from a raw AI response that failed JSON parsing.
+    /// </summary>
+    private static string SanitizeRawResponse(string raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+            return "I encountered an issue processing the response. Please try again.";
+
+        var messageMatch = System.Text.RegularExpressions.Regex.Match(
+            raw,
+            "\"message\"\\s*:\\s*\"((?:[^\"\\\\]|\\\\.)*)\"" ,
+            System.Text.RegularExpressions.RegexOptions.Singleline);
+
+        if (messageMatch.Success && !string.IsNullOrWhiteSpace(messageMatch.Groups[1].Value))
+        {
+            return System.Text.RegularExpressions.Regex.Unescape(messageMatch.Groups[1].Value);
+        }
+
+        var trimmed = raw.Trim();
+        if (trimmed.StartsWith("{") || trimmed.StartsWith("[") || trimmed.Contains("\"intent\""))
+        {
+            return "I processed your request but had trouble formatting the response. Please try again.";
+        }
+
+        return raw;
+    }
+
+    /// <summary>
+    /// Fix literal newlines/tabs inside JSON string values that LLMs sometimes produce.
+    /// </summary>
+    private static string RepairJsonControlChars(string json)
+    {
+        var sb = new System.Text.StringBuilder(json.Length + 200);
+        bool inString = false;
+        for (int i = 0; i < json.Length; i++)
+        {
+            char c = json[i];
+            if (c == '"')
+            {
+                int bs = 0;
+                for (int j = i - 1; j >= 0 && json[j] == '\\'; j--) bs++;
+                if (bs % 2 == 0) inString = !inString;
+                sb.Append(c);
+            }
+            else if (inString)
+            {
+                if (c == '\n') sb.Append("\\n");
+                else if (c == '\r') { /* skip */ }
+                else if (c == '\t') sb.Append("\\t");
+                else sb.Append(c);
+            }
+            else sb.Append(c);
+        }
+        return sb.ToString();
     }
 
     private Dictionary<string, object> ParseParameters(JsonElement paramsElement)
@@ -210,7 +282,9 @@ User message: {userMessage}";
             result[prop.Name] = prop.Value.ValueKind switch
             {
                 JsonValueKind.String => prop.Value.GetString() ?? "",
-                JsonValueKind.Number => prop.Value.GetInt32(),
+                JsonValueKind.Number => prop.Value.GetRawText(),
+                JsonValueKind.True => "true",
+                JsonValueKind.False => "false",
                 _ => prop.Value.GetRawText()
             };
         }

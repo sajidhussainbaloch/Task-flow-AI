@@ -7,6 +7,10 @@ using ZayFlow.App.Services;
 using ZayFlow.App.Services.AI;
 using ZayFlow.App.Services.AI.Contracts;
 using ZayFlow.App.Services.AI.Providers;
+using ZayFlow.App.Services.Assistant;
+using ZayFlow.App.Services.CodeGeneration.Agent;
+using ZayFlow.App.Services.CodeGeneration.Checkpointing;
+using ZayFlow.App.Services.CodeGeneration.Notes;
 using ZayFlow.App.Views;
 using ZayFlow.Backend.Contracts;
 
@@ -48,29 +52,33 @@ public class NavigationViewModel : ViewModelBase
         MainViewModel mainViewModel,
         IAIService aiService,
         IntentExecutionService executionService,
-        GroqProvider groqProvider,
+        OpenRouterProvider openRouterProvider,
         IFileIntelligenceService fileIntelligenceService,
         INotesService notesService,
         IInsightsService insightsService,
         IActionAuditService actionAuditService,
         ILocalBackendService backendService,
-        DownloadManager downloadManager)
+        DownloadManager downloadManager,
+        IAssistantOrchestrator orchestrator,
+        RetryOrchestrationService retryService,
+        WorkflowNotesService workflowNotes,
+        WorkflowCheckpointService checkpointService)
     {
         _themeService = themeService ?? throw new ArgumentNullException(nameof(themeService));
         _notificationService = notificationService ?? throw new ArgumentNullException(nameof(notificationService));
         _mainViewModel = mainViewModel ?? throw new ArgumentNullException(nameof(mainViewModel));
         var _aiService = aiService ?? throw new ArgumentNullException(nameof(aiService));
         var _executionService = executionService ?? throw new ArgumentNullException(nameof(executionService));
-        var _groqProvider = groqProvider ?? throw new ArgumentNullException(nameof(groqProvider));
+        var _openRouterProvider = openRouterProvider ?? throw new ArgumentNullException(nameof(openRouterProvider));
 
-        // Initialize Groq from preferences
+        // Initialize OpenRouter from preferences
         var preferences = preferencesService.Get();
-        if (!string.IsNullOrWhiteSpace(preferences.GroqApiKey))
+        if (!string.IsNullOrWhiteSpace(preferences.OpenRouterApiKey))
         {
-            _groqProvider.Initialize(preferences.GroqApiKey);
+            _openRouterProvider.Initialize(preferences.OpenRouterApiKey);
         }
 
-        _aiService.SwitchProvider("Groq (Free)");
+        _aiService.SwitchProvider("OpenRouter");
 
         _isDark = _themeService.IsDark;
         _themeService.ThemeChanged += () =>
@@ -83,7 +91,7 @@ public class NavigationViewModel : ViewModelBase
         // Initialize page ViewModels
         DashboardVM = new DashboardViewModel(_notificationService, _mainViewModel);
         AutomationVM = new AutomationViewModel(_mainViewModel, _notificationService);
-        AIAssistantVM = new AIAssistantViewModel(_aiService, _executionService, backendService, preferencesService, null);
+        AIAssistantVM = new AIAssistantViewModel(_aiService, _executionService, backendService, preferencesService, orchestrator, retryService, workflowNotes, checkpointService);
         HistoryVM = new HistoryViewModel(preferencesService);
 
         // When a history session is clicked, navigate to AI chat and load it
@@ -99,21 +107,18 @@ public class NavigationViewModel : ViewModelBase
         NotesVM = new NotesViewModel(notesService, _aiService, _notificationService);
         ProductivityToolsVM = new ProductivityToolsViewModel(_aiService, _notificationService);
         InsightsVM = new InsightsViewModel(insightsService, _notificationService);
-        SettingsVM = new SettingsViewModel(_themeService, _notificationService, windowService, preferencesService, _aiService, _groqProvider, actionAuditService, null);
+        SettingsVM = new SettingsViewModel(_themeService, _notificationService, windowService, preferencesService, _aiService, _openRouterProvider, actionAuditService, null);
         AccountVM = new AccountViewModel(_notificationService, preferencesService);
         DownloadsVM = new DownloadsViewModel(downloadManager);
 
         // Default to ZayFlow AI (main chat tab)
         _currentPage = AIAssistantVM;
 
-        // Only 3 main navigation items as required
+        // ChatGPT-style: only Settings in the nav items (sidebar shows chat history inline)
         NavigationItems = new ObservableCollection<NavigationItem>
         {
             new() { Name = "ZayFlow AI", Icon = "\uE734", Key = "AIAssistant", IsSelected = true },
-            new() { Name = "Downloads", Icon = "\uE896", Key = "Downloads" },
-            new() { Name = "History", Icon = "\uE81C", Key = "History" },
             new() { Name = "Settings", Icon = "\uE713", Key = "Settings" },
-            new() { Name = "Account", Icon = "\uE77B", Key = "Account" },
         };
 
         NavigateCommand = new RelayCommand(OnNavigate);

@@ -1,3 +1,4 @@
+using System.IO;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
@@ -5,11 +6,12 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.Extensions.Logging;
 using ZayFlow.App.Services.AI.Contracts;
+using ZayFlow.App.Services.Assistant;
 
 namespace ZayFlow.App.Services.AI.Providers;
 
 /// <summary>
-/// Groq API provider - Free, ultra-fast inference with conversation memory.
+/// Groq API provider with legacy intent routing support plus structured multimodal turn support.
 /// </summary>
 public class GroqProvider : IAIProvider
 {
@@ -17,15 +19,15 @@ public class GroqProvider : IAIProvider
     private readonly ILogger<GroqProvider> _logger;
     private string? _apiKey;
     private readonly List<GroqMessage> _conversationHistory = new();
-    private const int MaxHistoryMessages = 30; // Keep last 30 messages for context
+    private const int MaxHistoryMessages = 20;
 
     public string ProviderName => "Groq (Free)";
     public bool IsConfigured => !string.IsNullOrEmpty(_apiKey);
 
-    public GroqProvider(HttpClient httpClient, ILogger<GroqProvider> _logger)
+    public GroqProvider(HttpClient httpClient, ILogger<GroqProvider> logger)
     {
         _httpClient = httpClient;
-        this._logger = _logger;
+        _logger = logger;
     }
 
     public void Initialize(string apiKey)
@@ -34,19 +36,12 @@ public class GroqProvider : IAIProvider
         _logger.LogInformation("GroqProvider initialized");
     }
 
-    /// <summary>
-    /// Clears conversation history for a fresh session.
-    /// </summary>
     public void ClearConversationHistory()
     {
         _conversationHistory.Clear();
         _logger.LogInformation("Groq conversation history cleared");
     }
 
-    /// <summary>
-    /// Add a system-level note to conversation memory (e.g., action results).
-    /// Uses the "user" role with a [SYSTEM] prefix so the model understands it's context, not a user message.
-    /// </summary>
     public void AddNote(string note)
     {
         _conversationHistory.Add(new GroqMessage
@@ -55,9 +50,84 @@ public class GroqProvider : IAIProvider
             Content = $"[SYSTEM NOTE - do not repeat this to the user, just remember it]: {note}"
         });
 
-        // Trim if needed
-        while (_conversationHistory.Count > MaxHistoryMessages)
-            _conversationHistory.RemoveAt(0);
+        TrimHistory();
+    }
+
+    public async Task<AssistantTurnResult> SendStructuredTurnAsync(
+        string systemPrompt,
+        string userPrompt,
+        string model,
+        IReadOnlyList<AssistantAttachment> attachments,
+        CancellationToken ct = default)
+    {
+        if (!IsConfigured)
+        {
+            return new AssistantTurnResult
+            {
+                Message = "Groq API key not configured. Add your key in Settings.",
+                Intent = "chat"
+            };
+        }
+
+        try
+        {
+            var messages = new List<GroqStructuredMessage>
+            {
+                new() { Role = "system", Content = systemPrompt },
+                new() { Role = "user", Content = BuildUserContent(userPrompt, attachments) }
+            };
+
+            // Vision models (llama-4-scout, etc.) often don't support json_object response format
+            var isVisionModel = attachments.Count > 0;
+            // Estimate token count (~4 chars per token) and cap MaxTokens to avoid 413
+            var promptChars = (systemPrompt?.Length ?? 0) + EstimateContentLength(messages[1].Content);
+            var estimatedPromptTokens = promptChars / 4;
+            var maxOutputTokens = isVisionModel ? 8192 : Math.Min(16000, Math.Max(2048, 12000 - estimatedPromptTokens));
+
+            var request = new GroqStructuredRequest
+            {
+                Model = model,
+                Messages = messages,
+                Temperature = 0.2,
+                MaxTokens = maxOutputTokens,
+                TopP = 1,
+                Stream = false,
+                ResponseFormat = isVisionModel ? null : new GroqResponseFormat { Type = "json_object" }
+            };
+
+            var responseText = await SendRequestAsync(request, ct).ConfigureAwait(false);
+            var groqResponse = JsonSerializer.Deserialize<GroqResponse>(responseText);
+            if (groqResponse?.Choices == null || groqResponse.Choices.Count == 0)
+            {
+                return new AssistantTurnResult { Message = "Empty response from Groq API.", Intent = "chat" };
+            }
+            var innerContent = groqResponse.Choices[0].Message.Content;
+            // Vision models may return raw text instead of JSON — wrap it
+            if (attachments.Count > 0 && !innerContent.TrimStart().StartsWith("{", StringComparison.Ordinal))
+            {
+                return new AssistantTurnResult
+                {
+                    Message = innerContent,
+                    Intent = "chat",
+                    Mode = AssistantTurnMode.Vision
+                };
+            }
+            return ParseAssistantTurnResult(innerContent);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Structured Groq request failed");
+            // Re-throw so callers (code gen engine, plan mode, etc.) can handle properly
+            // instead of silently treating the error as chat content
+            throw new InvalidOperationException(ex.Message, ex);
+        }
+    }
+
+    private static int EstimateContentLength(object content)
+    {
+        if (content is string s) return s.Length;
+        // For vision messages with image parts, estimate text portion only
+        return 500;
     }
 
     public async Task<AIResponse> SendChatMessageAsync(string userMessage, CancellationToken ct = default)
@@ -73,17 +143,12 @@ public class GroqProvider : IAIProvider
 
         try
         {
-            // Add user message to conversation history
             _conversationHistory.Add(new GroqMessage { Role = "user", Content = userMessage });
+            TrimHistory();
 
-            // Trim history if it exceeds the limit
-            while (_conversationHistory.Count > MaxHistoryMessages)
-                _conversationHistory.RemoveAt(0);
-
-            // Build the full message list: system prompt + conversation history
             var messages = new List<GroqMessage>
             {
-                new GroqMessage { Role = "system", Content = BuildSystemPrompt() }
+                new() { Role = "system", Content = BuildSystemPrompt() }
             };
             messages.AddRange(_conversationHistory);
 
@@ -92,36 +157,13 @@ public class GroqProvider : IAIProvider
                 Model = "llama-3.3-70b-versatile",
                 Messages = messages.ToArray(),
                 Temperature = 0.7,
-                MaxTokens = 8000,
+                MaxTokens = 16000,
                 TopP = 1,
                 Stream = false
             };
 
-            var json = JsonSerializer.Serialize(request);
-            var content = new StringContent(json, Encoding.UTF8, "application/json");
-
-            _httpClient.DefaultRequestHeaders.Clear();
-            _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _apiKey);
-
-            var response = await _httpClient.PostAsync(
-                "https://api.groq.com/openai/v1/chat/completions",
-                content,
-                ct);
-
-            if (!response.IsSuccessStatusCode)
-            {
-                var error = await response.Content.ReadAsStringAsync(ct);
-                _logger.LogError($"Groq API error {response.StatusCode}: {error}");
-                return new AIResponse
-                {
-                    Success = false,
-                    Message = $"API Error {response.StatusCode}. Check your API key at https://console.groq.com"
-                };
-            }
-
-            var responseText = await response.Content.ReadAsStringAsync(ct);
+            var responseText = await SendRequestAsync(request, ct).ConfigureAwait(false);
             var groqResponse = JsonSerializer.Deserialize<GroqResponse>(responseText);
-
             if (groqResponse?.Choices == null || groqResponse.Choices.Count == 0)
             {
                 return new AIResponse
@@ -132,15 +174,12 @@ public class GroqProvider : IAIProvider
             }
 
             var assistantMessage = groqResponse.Choices[0].Message.Content;
-
-            // Add assistant response to conversation history for memory
             _conversationHistory.Add(new GroqMessage { Role = "assistant", Content = assistantMessage });
-
             return ParseAIResponse(assistantMessage);
         }
         catch (HttpRequestException ex)
         {
-            _logger.LogError($"Groq network error: {ex.Message}");
+            _logger.LogError(ex, "Groq network error");
             return new AIResponse
             {
                 Success = false,
@@ -149,7 +188,7 @@ public class GroqProvider : IAIProvider
         }
         catch (Exception ex)
         {
-            _logger.LogError($"Groq error: {ex.Message}");
+            _logger.LogError(ex, "Groq error");
             return new AIResponse
             {
                 Success = false,
@@ -184,442 +223,562 @@ Content:
         return response.Message;
     }
 
+    public async Task<ImageGenerationResult> GenerateImageAsync(string prompt, string savePath, CancellationToken ct = default)
+    {
+        if (!IsConfigured)
+        {
+            return new ImageGenerationResult { Success = false, Message = "Groq API key not configured." };
+        }
+
+        try
+        {
+            var requestBody = new
+            {
+                model = "playai/playai-image-generation",
+                prompt = prompt,
+                n = 1,
+                size = "1024x1024"
+            };
+
+            var json = JsonSerializer.Serialize(requestBody);
+            var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+            _httpClient.DefaultRequestHeaders.Clear();
+            _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _apiKey);
+
+            var response = await _httpClient.PostAsync("https://api.groq.com/openai/v1/images/generations", content, ct).ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode)
+            {
+                var error = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+                return new ImageGenerationResult { Success = false, Message = $"Image generation failed: {error}" };
+            }
+
+            var responseText = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+            var parsed = JsonSerializer.Deserialize<JsonElement>(responseText);
+
+            if (!parsed.TryGetProperty("data", out var dataArray) || dataArray.GetArrayLength() == 0)
+            {
+                return new ImageGenerationResult { Success = false, Message = "No image data returned." };
+            }
+
+            var firstItem = dataArray[0];
+
+            // Check for base64 data
+            if (firstItem.TryGetProperty("b64_json", out var b64))
+            {
+                var imageBytes = Convert.FromBase64String(b64.GetString()!);
+                Directory.CreateDirectory(Path.GetDirectoryName(savePath)!);
+                await File.WriteAllBytesAsync(savePath, imageBytes, ct).ConfigureAwait(false);
+                return new ImageGenerationResult { Success = true, FilePath = savePath, Message = "Image generated successfully." };
+            }
+
+            // Check for URL
+            if (firstItem.TryGetProperty("url", out var url))
+            {
+                var imageUrl = url.GetString()!;
+                var imageBytes = await _httpClient.GetByteArrayAsync(imageUrl, ct).ConfigureAwait(false);
+                Directory.CreateDirectory(Path.GetDirectoryName(savePath)!);
+                await File.WriteAllBytesAsync(savePath, imageBytes, ct).ConfigureAwait(false);
+                return new ImageGenerationResult { Success = true, FilePath = savePath, Message = "Image generated successfully." };
+            }
+
+            return new ImageGenerationResult { Success = false, Message = "Unexpected image API response format." };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Image generation failed");
+            return new ImageGenerationResult { Success = false, Message = $"Image generation error: {ex.Message}" };
+        }
+    }
+
+    private async Task<string> SendRequestAsync(object request, CancellationToken ct)
+    {
+        var json = JsonSerializer.Serialize(request);
+
+        _httpClient.DefaultRequestHeaders.Clear();
+        _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _apiKey);
+
+        const int maxRetries = 3;
+        for (int attempt = 0; attempt <= maxRetries; attempt++)
+        {
+            try
+            {
+                var content = new StringContent(json, Encoding.UTF8, "application/json");
+                var response = await _httpClient.PostAsync("https://api.groq.com/openai/v1/chat/completions", content, ct).ConfigureAwait(false);
+
+                if (response.IsSuccessStatusCode)
+                    return await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+
+                var error = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+                var statusCode = (int)response.StatusCode;
+
+                // Retry on 429 rate limit with exponential backoff
+                if (statusCode == 429 && attempt < maxRetries)
+                {
+                    var waitMs = 2000 * (attempt + 1);
+                    var match = System.Text.RegularExpressions.Regex.Match(error, @"try again in ([\d.]+)s");
+                    if (match.Success && double.TryParse(match.Groups[1].Value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var secs))
+                        waitMs = (int)(secs * 1000) + 500;
+
+                    _logger.LogWarning("Groq 429 rate limit — retrying in {WaitMs}ms (attempt {Attempt}/{Max})", waitMs, attempt + 1, maxRetries);
+                    await Task.Delay(waitMs, ct).ConfigureAwait(false);
+                    continue;
+                }
+
+                // Parse friendly error message from Groq JSON error response
+                throw new InvalidOperationException(ParseGroqErrorMessage(statusCode, error));
+            }
+            catch (HttpRequestException ex) when (attempt < maxRetries)
+            {
+                // Network / DNS failures — retry with backoff
+                var waitMs = 3000 * (attempt + 1);
+                _logger.LogWarning(ex, "Groq network error — retrying in {WaitMs}ms (attempt {Attempt}/{Max})", waitMs, attempt + 1, maxRetries);
+                await Task.Delay(waitMs, ct).ConfigureAwait(false);
+            }
+        }
+
+        throw new InvalidOperationException("Unable to connect to AI service after multiple retries. Check your internet connection.");
+    }
+
+    /// <summary>Parses the Groq JSON error body into a clean, user-friendly message.</summary>
+    private static string ParseGroqErrorMessage(int statusCode, string rawError)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(rawError);
+            if (doc.RootElement.TryGetProperty("error", out var errorObj)
+                && errorObj.TryGetProperty("message", out var msgProp))
+            {
+                var msg = msgProp.GetString() ?? rawError;
+
+                // 413 / rate_limit_exceeded on tokens — give a specific helpful message
+                if (statusCode == 413 || msg.Contains("rate_limit_exceeded", StringComparison.OrdinalIgnoreCase)
+                    || msg.Contains("tokens per minute", StringComparison.OrdinalIgnoreCase))
+                {
+                    return "Your request is too large for the current Groq plan (token limit exceeded). "
+                         + "Try a simpler request, or upgrade to Groq Dev Tier for higher limits.";
+                }
+
+                if (statusCode == 401 || msg.Contains("invalid_api_key", StringComparison.OrdinalIgnoreCase))
+                    return "Invalid Groq API key. Check your key in Settings.";
+
+                return msg;
+            }
+        }
+        catch { /* not JSON — fall through */ }
+
+        return $"AI service error (HTTP {statusCode}). Please try again.";
+    }
+
+    private object BuildUserContent(string userPrompt, IReadOnlyList<AssistantAttachment> attachments)
+    {
+        if (attachments.Count == 0)
+        {
+            return userPrompt;
+        }
+
+        var parts = new List<GroqContentPart>
+        {
+            new() { Type = "text", Text = userPrompt }
+        };
+
+        foreach (var attachment in attachments.Take(3))
+        {
+            if (string.IsNullOrWhiteSpace(attachment.LocalPath) || !File.Exists(attachment.LocalPath))
+            {
+                continue;
+            }
+
+            var bytes = File.ReadAllBytes(attachment.LocalPath);
+            var mime = string.IsNullOrWhiteSpace(attachment.MimeType) ? "image/png" : attachment.MimeType;
+            var dataUrl = $"data:{mime};base64,{Convert.ToBase64String(bytes)}";
+            parts.Add(new GroqContentPart
+            {
+                Type = "image_url",
+                ImageUrl = new GroqImageUrl { Url = dataUrl }
+            });
+        }
+
+        return parts;
+    }
+
+    private void TrimHistory()
+    {
+        while (_conversationHistory.Count > MaxHistoryMessages)
+        {
+            var noteIdx = _conversationHistory.FindIndex(m =>
+                m.Role == "user" && m.Content.StartsWith("[SYSTEM NOTE", StringComparison.Ordinal));
+            if (noteIdx >= 0 && noteIdx < _conversationHistory.Count - 2)
+            {
+                _conversationHistory.RemoveAt(noteIdx);
+            }
+            else
+            {
+                _conversationHistory.RemoveAt(0);
+            }
+        }
+    }
+
     private string BuildSystemPrompt()
     {
-        return @"You are ZayFlow AI, a powerful desktop productivity + coding assistant that EXECUTES actions â€” not just talks about them.
-You are the backbone of a premium productivity app. Users pay for you. Be useful, be precise, TAKE ACTION.
-
-## CRITICAL BEHAVIOR
-- When the user asks you to DO something, you MUST use an actionable intent. NEVER just describe what you would do.
-- You ACTUALLY create files, open apps, run commands, search the web. You are not a chatbot â€” you are an action engine.
-- ALWAYS respond with a JSON object. No markdown, no extra text outside JSON.
-- Reference previous messages. If user says 'that file' or 'edit it', look at [SYSTEM NOTE] messages for the file path.
-- When user asks to create code, you MUST generate COMPLETE, WORKING code â€” not placeholder or stub code.
-
-## RESPONSE FORMAT (strict JSON only):
-{
-  ""intent"": ""<intent_name>"",
-  ""message"": ""<friendly response>"",
-  ""parameters"": { },
-  ""confirmationMessage"": ""<what will happen>"",
-  ""requiresConfirmation"": false,
-  ""tokenCost"": 1
-}
-
-## ALL 91 INTENTS:
-
-### ðŸ“‚ FILE MANAGEMENT:
-1. organize_folder - Sort files by type/date/category. Parameters: { ""folderPath"": ""Downloads"", ""mode"": ""type|date|category"" }
-2. detect_duplicates - SHA256 duplicate finder. Parameters: { ""folderPath"": ""Downloads"" }
-3. rename_files - Rename files. Parameters: { ""filePath"": ""..."", ""newName"": ""..."" }
-4. move_files - Move files. Parameters: { ""filePath"": ""..."", ""destination"": ""Downloads"" }
-5. delete_files - Delete (recycle bin). Parameters: { ""filePath"": ""..."" }
-6. read_file - Read file content. Parameters: { ""filePath"": ""..."" }
-7. create_folder - Create folder with template. Parameters: { ""folderPath"": ""Documents/MyProject"", ""template"": ""project|web|media|school|photography|client"" }
-8. open_file - Open file in app. Parameters: { ""filePath"": ""..."", ""application"": ""vscode"" }
-
-### ðŸ“ DOCUMENT & FILE CREATION:
-9. create_document - Create .docx Word documents. Parameters: { ""title"": ""..."", ""content"": ""..."", ""type"": ""document|timetable|checklist|report"" }
-10. create_file - Create ANY file type. Parameters: { ""fileName"": ""calculator.py"", ""language"": ""python"", ""content"": ""<COMPLETE code>"", ""savePath"": ""Desktop"" }
-
-### âœï¸ FILE EDITING:
-11. edit_file - Edit existing file. Parameters: { ""filePath"": ""..."", ""content"": ""..."", ""mode"": ""overwrite|append|prepend|replace"", ""find"": ""old"", ""replace"": ""new"" }
-
-### ðŸ“Š ANALYSIS:
-12. folder_insights - Folder size analysis. Parameters: { ""folderPath"": ""Downloads"" }
-13. find_old_files - Find old files. Parameters: { ""folderPath"": ""Downloads"", ""daysOld"": ""90"" }
-14. summarize_file - AI summarization. Parameters: { ""filePath"": ""..."" }
-15. get_disk_info - Disk usage. Parameters: { ""drive"": ""C"" }
-16. visual_analytics - Folder charts. Parameters: { ""folderPath"": ""Downloads"", ""depth"": ""2"" }
-
-### ðŸ“ TEXT GENERATION:
-17. generate_text - Write emails, proposals. Parameters: { ""type"": ""email|proposal|reply|message"", ""context"": ""..."" }
-18. clean_notes - Clean messy notes. Parameters: { ""content"": ""..."" }
-19. plan_tasks - Break goals into steps. Parameters: { ""goal"": ""..."" }
-
-### ðŸš€ APPS & WEB:
-20. open_application - Fuzzy app launcher. Parameters: { ""appName"": ""notepad|chrome|word|excel|vscode|calculator|explorer|cmd|powershell|paint|spotify|teams|zoom|edge|firefox"" }
-21. open_url - Smart URL opener. Parameters: { ""url"": ""gmail|youtube|github|google|twitter|OR any URL"" }
-22. search_web - Search internet. Parameters: { ""query"": ""..."", ""engine"": ""google|bing|youtube|github|stackoverflow|reddit|npm|pypi|nuget"" }
-23. download_file - Download from URLs/websites. Parameters: { ""url"": ""..."", ""savePath"": ""Downloads"", ""fileName"": ""..."", ""searchTerm"": ""..."" }
-
-### ðŸ–¥ï¸ SYSTEM:
-24. run_command - Execute terminal command. Parameters: { ""command"": ""pip install requests"", ""shell"": ""powershell|cmd"" }
-25. system_info - CPU, GPU, RAM, battery. Parameters: { ""type"": ""overview|memory|processes"" }
-26. change_wallpaper - Set wallpaper. Parameters: { ""imagePath"": ""..."" }
-27. clean_desktop - Archive desktop files. Parameters: { }
-28. clean_temp - Clean temp files. Parameters: { }
-29. quick_automation - Task chaining. Parameters: { ""task"": ""clean_temp, organize downloads, clean desktop"" }
-30. process_action - List/kill processes. Parameters: { ""action"": ""list|top|kill"", ""processName"": ""..."" }
-
-### â° UTILITIES:
-31. set_reminder - Timed notification. Parameters: { ""message"": ""..."", ""minutes"": ""30"" }
-32. compress_files - Zip/extract. Parameters: { ""sourcePath"": ""..."", ""archiveName"": ""project.zip"", ""mode"": ""compress|extract"" }
-33. clipboard_action - Read/write clipboard. Parameters: { ""mode"": ""read|write"", ""content"": ""..."" }
-34. translate_text - AI translation. Parameters: { ""text"": ""..."", ""from"": ""english"", ""to"": ""spanish"" }
-35. screenshot - Take screenshot. Parameters: { ""mode"": ""fullscreen|window"", ""savePath"": ""Desktop"" }
-36. text_to_speech - Read text aloud. Parameters: { ""text"": ""..."", ""speed"": ""normal|slow|fast"" }
-37. wifi_info - WiFi details. Parameters: { ""showPassword"": ""true|false"" }
-38. hash_file - File checksum. Parameters: { ""filePath"": ""..."", ""algorithm"": ""MD5|SHA1|SHA256|SHA512"" }
-39. schedule_shutdown - Shutdown/restart/sleep. Parameters: { ""action"": ""shutdown|restart|sleep"", ""minutes"": ""30"", ""cancel"": ""false"" }
-40. convert_units - Unit conversion. Parameters: { ""value"": ""100"", ""from"": ""celsius"", ""to"": ""fahrenheit"" }
-41. date_time - Date/time. Parameters: { ""mode"": ""date|time|datetime|utc"" }
-42. generate_password - Secure password. Parameters: { ""length"": ""16"" }
-43. quick_math - Math expressions. Parameters: { ""expression"": ""(25+5)*3/2"" }
-44. ping_host - Host latency. Parameters: { ""host"": ""google.com"", ""count"": ""4"" }
-
-### ðŸ’¬ GENERAL:
-
-45. chat - Conversation, questions, help. Parameters: { }
-
-### ðŸ” SMART SEARCH & CLEANUP:
-
-46. smart_search - Natural language file finder. Parameters: { ""query"": ""..."", ""scope"": ""Documents|Downloads|Desktop|All"" }
-
-47. ai_bulk_rename - AI-powered smart rename. Parameters: { ""folderPath"": ""Downloads"", ""pattern"": ""descriptive|numbered|dated"" }
-
-48. backup_suggestions - Backup advice. Parameters: { ""scope"": ""Documents|Desktop|All"" }
-
-49. smart_cleanup_schedule - Cleanup routine analyzer. Parameters: { ""analyze"": ""true"" }
-
-### ðŸ“¦ BATCH & PRODUCTIVITY:
-
-50. batch_operations - Bulk file ops. Parameters: { ""operation"": ""copy|move|rename|convert"", ""sourcePath"": ""..."", ""pattern"": ""*.jpg"", ""destination"": ""..."" }
-
-51. quick_note - Persistent notes. Parameters: { ""action"": ""add|list|search|delete|clear"", ""content"": ""..."", ""query"": ""..."" }
-
-52. focus_mode - Minimize distractions. Parameters: { ""duration"": ""25"", ""action"": ""start|stop"" }
-
-53. daily_briefing - Morning dashboard. Parameters: { }
-
-54. generate_report - Folder/system report. Parameters: { ""type"": ""folder|system|project"", ""path"": ""..."" }
-
-55. file_templates - Quick scaffolding. Parameters: { ""template"": ""html|react|python|csharp|node|api|readme|gitignore|docker|script"", ""name"": ""..."", ""savePath"": ""..."" }
-
-56. workspace_snapshot - Save/compare workspace. Parameters: { ""action"": ""save|list|compare"", ""name"": ""..."" }
-
-57. productivity_tips - Context-aware tips. Parameters: { }
-
-58. preview_changes - Dry-run preview. Parameters: { ""action"": ""organize|cleanup|rename"", ""path"": ""..."" }
-
-59. explain_action - Explain an intent. Parameters: { ""intent"": ""..."" }
-
-60. suggest_workflow - Suggest automation. Parameters: { ""goal"": ""..."" }
-
-### ðŸ”§ FILE TOOLS:
-
-61. sync_folders - Mirror/merge sync. Parameters: { ""source"": ""..."", ""target"": ""..."", ""mode"": ""mirror|merge"" }
-
-62. file_diff - Compare two files. Parameters: { ""file1"": ""..."", ""file2"": ""..."" }
-
-63. encrypt_decrypt - AES-256 encryption. Parameters: { ""filePath"": ""..."", ""action"": ""encrypt|decrypt"", ""password"": ""..."" }
-
-64. secure_delete - Military-grade delete. Parameters: { ""filePath"": ""..."" }
-
-65. bulk_metadata - File metadata table. Parameters: { ""folderPath"": ""..."", ""pattern"": ""*.*"" }
-
-66. regex_search - Regex search in files. Parameters: { ""folderPath"": ""..."", ""pattern"": ""TODO|FIXME"", ""filePattern"": ""*.cs"" }
-
-### ðŸŽ¨ MEDIA & CONVERSION:
-
-67. data_convert - Convert JSON/CSV/XML. Parameters: { ""filePath"": ""..."", ""targetFormat"": ""json|csv|xml"" }
-
-68. text_transform - Text manipulation. Parameters: { ""text"": ""..."", ""operation"": ""uppercase|lowercase|titlecase|reverse|base64_encode|base64_decode|url_encode|url_decode"" }
-
-69. image_tools - Image info/resize. Parameters: { ""imagePath"": ""..."", ""action"": ""info|resize"", ""width"": ""800"" }
-
-70. pdf_tools - PDF info. Parameters: { ""filePath"": ""..."", ""action"": ""info|merge"" }
-
-71. extract_text - Extract text from file. Parameters: { ""filePath"": ""..."" }
-
-### ðŸŒ NETWORK:
-
-72. network_diagnostics - Full network report. Parameters: { }
-
-73. port_scan - Scan common ports. Parameters: { ""host"": ""localhost"" }
-
-74. dns_manage - DNS lookup/flush. Parameters: { ""action"": ""lookup|flush"", ""domain"": ""..."" }
-
-75. hosts_file - View hosts file. Parameters: { ""action"": ""list"" }
-
-### âš¡ SYSTEM POWER:
-
-76. startup_manager - View startup programs. Parameters: { ""action"": ""list"" }
-
-77. service_manager - Windows services. Parameters: { ""action"": ""list|search"", ""filter"": ""..."" }
-
-78. env_variables - Env vars & PATH. Parameters: { ""action"": ""list|get|path"", ""name"": ""..."" }
-
-79. performance_report - System perf dashboard. Parameters: { }
-
-80. power_plan - Power plan info. Parameters: { ""action"": ""list|active"" }
-
-81. storage_analyzer - Disk space analysis. Parameters: { ""path"": ""C:\\"", ""action"": ""overview|large_files|by_type"" }
-
-### ðŸ› ï¸ DEV TOOLS:
-
-82. git_quick - Git shortcuts. Parameters: { ""action"": ""status|log|branch|diff|remote|stash|tags"", ""path"": ""."" }
-
-83. api_test - HTTP API tester. Parameters: { ""url"": ""..."", ""method"": ""GET|POST|PUT|DELETE"", ""body"": ""..."" }
-
-84. code_format - Code analysis. Parameters: { ""filePath"": ""..."", ""action"": ""analyze|trim"" }
-
-85. qr_code - Generate QR code. Parameters: { ""text"": ""..."", ""savePath"": ""Desktop"" }
-
-### ðŸ¤– AUTOMATION:
-
-86. watch_folder - File system watcher. Parameters: { ""folderPath"": ""..."", ""action"": ""start|stop|list|log"" }
-
-87. scheduled_task - View scheduled tasks. Parameters: { ""action"": ""list"" }
-
-88. auto_backup - Zip backup. Parameters: { ""sourcePath"": ""..."", ""backupPath"": ""..."" }
-
-### ðŸ”„ WORKFLOW:
-
-89. batch_workflow - Multi-step chain. Parameters: { ""steps"": ""clean temp, organize downloads, daily briefing"" }
-
-90. save_template - Workflow templates. Parameters: { ""action"": ""save|list|load|delete"", ""name"": ""..."", ""steps"": ""..."" }
-
-### ðŸ  HUB:
-
-91. zayflow_hub - Browse all intents. Parameters: { ""category"": ""all|file|ai|system|dev|network|automation"" }
-
-## CONFIRMATION RULES:
-
-- requiresConfirmation: TRUE â†’ destructive: organize_folder, move_files, delete_files, clean_desktop, clean_temp, rename_files, ai_bulk_rename, quick_automation, run_command, edit_file, compress_files, download_file, schedule_shutdown, process_action (kill), secure_delete, encrypt_decrypt, sync_folders, auto_backup, batch_operations (move/rename)
-
-- requiresConfirmation: FALSE â†’ everything else (create_file, open_application, open_url, open_file, search_web, system_info, create_document, generate_text, folder_insights, set_reminder, chat, network_diagnostics, port_scan, dns_manage, git_quick, api_test, code_format, qr_code, bulk_metadata, regex_search, data_convert, text_transform, quick_note, focus_mode, daily_briefing, generate_report, file_templates, workspace_snapshot, productivity_tips, preview_changes, explain_action, suggest_workflow, zayflow_hub, etc.)
-
-## INTENT ROUTING (follow EXACTLY):
-
-- 'create a python calculator' / 'make a JS file' / 'write a bash script' â†’ create_file (with complete working code!)
-
-- 'create a word document' / 'make a timetable' â†’ create_document
-
-- 'edit that file' / 'add a function' / 'fix the code' â†’ edit_file
-
-- 'open it in vscode' / 'open that in word' â†’ open_file
-
-- 'open notepad' / 'launch chrome' â†’ open_application
-
-- 'open gmail' / 'go to youtube' â†’ open_url
-
-- 'search how to X' / 'google something' â†’ search_web
-
-- 'install requests' / 'run pip install' â†’ run_command
-
-- 'how much RAM' / 'system info' â†’ system_info
-
-- 'write an email' / 'draft a proposal' â†’ generate_text
-
-- 'organize downloads' â†’ organize_folder
-
-- 'remind me in 30 minutes' â†’ set_reminder
-
-- 'zip this folder' / 'extract the zip' â†’ compress_files
-
-- 'copy this to clipboard' â†’ clipboard_action
-
-- 'translate hello to spanish' â†’ translate_text (in chat, no browser!)
-
-- 'download this file' / 'download from URL' â†’ download_file
-
-- 'take a screenshot' â†’ screenshot
-
-- 'read this aloud' â†’ text_to_speech
-
-- 'wifi info' / 'wifi password' â†’ wifi_info
-
-- 'hash this file' / 'checksum' â†’ hash_file
-
-- 'shutdown in 30 minutes' / 'restart PC' â†’ schedule_shutdown
-
-- 'convert celsius to fahrenheit' â†’ convert_units
-
-- 'what time is it' â†’ date_time
-
-- 'generate a password' â†’ generate_password
-
-- 'calculate 45*12' â†’ quick_math
-
-- 'ping google.com' â†’ ping_host
-
-- 'list processes' / 'kill notepad' â†’ process_action
-
-- 'find my tax docs' / 'search for PDFs' â†’ smart_search
-
-- 'rename files intelligently' â†’ ai_bulk_rename
-
-- 'what should I backup' â†’ backup_suggestions
-
-- 'analyze cleanup needs' â†’ smart_cleanup_schedule
-
-- 'copy all images' / 'bulk rename' â†’ batch_operations
-
-- 'take a note' / 'show notes' â†’ quick_note
-
-- 'start focus mode' / 'pomodoro' â†’ focus_mode
-
-- 'morning briefing' â†’ daily_briefing
-
-- 'generate a report' â†’ generate_report
-
-- 'create react template' / 'scaffold project' â†’ file_templates
-
-- 'snapshot workspace' â†’ workspace_snapshot
-
-- 'give me tips' â†’ productivity_tips
-
-- 'preview organize' / 'dry run' â†’ preview_changes
-
-- 'what does organize_folder do' â†’ explain_action
-
-- 'suggest workflow for project setup' â†’ suggest_workflow
-
-- 'sync two folders' â†’ sync_folders
-
-- 'compare files' / 'diff files' â†’ file_diff
-
-- 'encrypt this file' / 'decrypt' â†’ encrypt_decrypt
-
-- 'securely delete' / 'shred file' â†’ secure_delete
-
-- 'show file metadata' â†’ bulk_metadata
-
-- 'search TODO in code' / 'regex search' â†’ regex_search
-
-- 'convert JSON to CSV' â†’ data_convert
-
-- 'uppercase this' / 'base64 encode' â†’ text_transform
-
-- 'image info' / 'resize image' â†’ image_tools
-
-- 'PDF info' â†’ pdf_tools
-
-- 'extract text from file' â†’ extract_text
-
-- 'network diagnostics' â†’ network_diagnostics
-
-- 'scan ports' â†’ port_scan
-
-- 'DNS lookup' / 'flush DNS' â†’ dns_manage
-
-- 'show hosts file' â†’ hosts_file
-
-- 'startup programs' â†’ startup_manager
-
-- 'list services' â†’ service_manager
-
-- 'environment variables' / 'show PATH' â†’ env_variables
-
-- 'performance report' â†’ performance_report
-
-- 'power plan' â†’ power_plan
-
-- 'disk usage' / 'large files' â†’ storage_analyzer
-
-- 'git status' / 'git log' â†’ git_quick
-
-- 'test API' / 'call endpoint' â†’ api_test
-
-- 'analyze code' / 'trim whitespace' â†’ code_format
-
-- 'generate QR code' â†’ qr_code
-
-- 'watch this folder' â†’ watch_folder
-
-- 'scheduled tasks' â†’ scheduled_task
-
-- 'backup my project' â†’ auto_backup
-
-- 'run these steps' â†’ batch_workflow
-
-- 'save workflow' / 'load template' â†’ save_template
-
-- 'show all commands' / 'zayflow hub' â†’ zayflow_hub
-
-- 'hi' / 'hello' / general conversation â†’ chat
-
-## CODE GENERATION RULES (for create_file):
-- ALWAYS generate COMPLETE, WORKING, PRODUCTION-QUALITY code. Never stubs.
-- Include imports, main functions, proper structure, comments.
-- For 'python calculator' â†’ a full GUI calculator using tkinter, not a CLI toy.
-- For 'HTML landing page' â†’ complete HTML with CSS, responsive, modern.
-- For 'JS todo app' â†’ full working app with local storage.
-- The code should be ready to run. Users are paying for quality.
-- Set language parameter correctly so the system creates the right file extension.
-
-## PATH RULES:
-- Use SIMPLE folder names: Downloads, Desktop, Documents, Pictures, Videos
-- Subfolder: Documents/MyProject
-- NEVER use C:\ or full Windows paths
-
-## CONVERSATION MEMORY:
-- Full conversation history is available. Use it.
-- [SYSTEM NOTE] messages = action results. Reference file paths from them.
-- 'that file' / 'edit it' / 'open it' â†’ look at recent [SYSTEM NOTE] for the file path.
-- Be conversational, remember context, be helpful.";
+        return @"You are ZayFlow AI, a premium desktop productivity and coding assistant that EXECUTES actions. You are not a chatbot; you are an action engine.
+
+## RULES
+1. ALWAYS respond with a JSON object. No markdown outside JSON. No extra text.
+2. When user asks to DO something, use an actionable intent. Never just describe.
+3. Reference [SYSTEM NOTE] messages for file paths when user says ""that file""/""edit it"".
+4. For create_file: generate COMPLETE, WORKING, PRODUCTION-QUALITY code with imports, error handling, comments. Ready to compile/run.
+5. Simple paths: Downloads, Desktop, Documents, Pictures. Never C:\\ full paths.
+6. NEVER operate on Windows, System32, Program Files, or system directories.
+
+## RESPONSE FORMAT (strict JSON):
+{""intent"":""<name>"",""message"":""<friendly response with markdown formatting>"",""parameters"":{},""confirmationMessage"":""<what happens>"",""requiresConfirmation"":false,""tokenCost"":1}
+
+## INTENTS (91 total, use exact names):
+FILE: organize_folder(folderPath,mode:type|date|category) | detect_duplicates(folderPath) | rename_files(filePath,newName) | move_files(filePath,destination) | delete_files(filePath) | read_file(filePath) | create_folder(folderPath,template:project|web|media|school) | open_file(filePath,application)
+CREATE: create_document(title,content,type:document|timetable|checklist|report) | create_file(fileName,language,content,savePath)
+EDIT: edit_file(filePath,content,mode:overwrite|append|prepend|replace,find,replace)
+ANALYSIS: folder_insights(folderPath) | find_old_files(folderPath,daysOld) | summarize_file(filePath) | get_disk_info(drive) | visual_analytics(folderPath,depth)
+TEXT: generate_text(type:email|proposal|reply,context) | clean_notes(content) | plan_tasks(goal)
+APPS: open_application(appName) | open_url(url) | search_web(query,engine) | download_file(url,savePath,fileName,searchTerm)
+SYSTEM: run_command(command,shell) | system_info(type) | change_wallpaper(imagePath) | clean_desktop | clean_temp | quick_automation(task) | process_action(action:list|top|kill,processName)
+UTILS: set_reminder(message,minutes) | compress_files(sourcePath,archiveName,mode) | clipboard_action(mode,content) | translate_text(text,from,to) | screenshot(mode,savePath) | text_to_speech(text,speed) | wifi_info(showPassword) | hash_file(filePath,algorithm) | schedule_shutdown(action,minutes,cancel) | convert_units(value,from,to) | date_time(mode) | generate_password(length) | quick_math(expression) | ping_host(host,count)
+SEARCH: smart_search(query,scope) | ai_bulk_rename(folderPath,pattern) | backup_suggestions(scope) | smart_cleanup_schedule(analyze)
+BATCH: batch_operations(operation,sourcePath,pattern,destination) | quick_note(action:add|list|search|delete,content,query) | focus_mode(duration,action) | daily_briefing | generate_report(type,path) | file_templates(template,name,savePath) | workspace_snapshot(action,name) | productivity_tips | preview_changes(action,path) | explain_action(intent) | suggest_workflow(goal)
+FILES: sync_folders(source,target,mode) | file_diff(file1,file2) | encrypt_decrypt(filePath,action,password) | secure_delete(filePath) | bulk_metadata(folderPath,pattern) | regex_search(folderPath,pattern,filePattern)
+MEDIA: data_convert(filePath,targetFormat) | text_transform(text,operation) | image_tools(imagePath,action,width) | pdf_tools(filePath,action) | extract_text(filePath)
+NETWORK: network_diagnostics | port_scan(host) | dns_manage(action,domain) | hosts_file(action)
+POWER: startup_manager(action) | service_manager(action,filter) | env_variables(action,name) | performance_report | power_plan(action) | storage_analyzer(path,action)
+DEV: git_quick(action,path) | api_test(url,method,body) | code_format(filePath,action) | qr_code(text,savePath)
+AUTO: watch_folder(folderPath,action) | scheduled_task(action) | auto_backup(sourcePath,backupPath)
+WORKFLOW: batch_workflow(steps) | save_template(action,name,steps)
+HUB: zayflow_hub(category)
+CHAT: chat (general conversation)
+
+## CONFIRMATION REQUIRED (set requiresConfirmation:true):
+organize_folder, move_files, delete_files, clean_desktop, clean_temp, rename_files, ai_bulk_rename, quick_automation, run_command, edit_file, compress_files, download_file, schedule_shutdown, process_action(kill), secure_delete, encrypt_decrypt, sync_folders, auto_backup, batch_operations(move/rename)
+
+## CODE GENERATION (create_file intent):
+- parameters.content MUST contain the ENTIRE source code - every function fully implemented, all imports, main entry point, error handling. READY TO RUN.
+- NEVER use placeholders like '# ...', '// rest of code', '// TODO', or '...' - every single function body must be complete.
+- If a program would be too long, write a SIMPLER but FULLY WORKING version instead of a truncated one.
+- parameters.language = correct language (python, javascript, csharp, html, etc.)
+- parameters.fileName = full filename with extension
+- message field = what it does, how to run it (commands), prerequisites. NO code in message.
+- For GUI: use proper frameworks (tkinter for Python, WinForms for C#, etc.)
+- The content value MUST be a single-line JSON string with \n for newlines. NEVER put literal line breaks inside JSON string values.
+
+## CRITICAL INTENT RULES:
+- The intent field must ALWAYS be a specific intent name (e.g., ""qr_code"", ""wifi_info"", ""screenshot""). NEVER return a category header (FILE, CREATE, EDIT, UTILS, DEV, SYSTEM, NETWORK, MEDIA, POWER, etc.) as the intent value.
+- ""generate qr code"" / ""make qr code"" → qr_code with text parameter (NOT ""DEV"")
+- ""wifi password"" / ""wifi info"" → wifi_info with showPassword:true (NOT ""UTILS"")
+- ""take a screenshot"" → screenshot (NOT ""UTILS"")
+
+## STYLE
+- Use rich markdown in message field: **bold**, *italic*, `code`, bullet lists, headers
+- Be concise but thorough. Sound like a senior developer.
+- Proactively suggest next steps: 'Want me to open it in VS Code?'
+- Full conversation history available. Reference it naturally";
     }
+
+    private AssistantTurnResult ParseAssistantTurnResult(string responseText)
+    {
+        try
+        {
+            var jsonText = ExtractJson(responseText);
+            var parsed = JsonSerializer.Deserialize<JsonElement>(jsonText);
+            var result = new AssistantTurnResult
+            {
+                Mode = ParseMode(parsed.TryGetProperty("mode", out var modeProp) ? GetStringValue(modeProp) : null),
+                Message = parsed.TryGetProperty("message", out var msg) ? GetStringValue(msg) ?? string.Empty : string.Empty,
+                Intent = parsed.TryGetProperty("intent", out var intent) ? GetStringValue(intent) ?? "chat" : "chat",
+                RequiresConfirmation = parsed.TryGetProperty("requiresConfirmation", out var req) && GetBoolValue(req),
+                ConfirmationMessage = parsed.TryGetProperty("confirmationMessage", out var confirm) ? GetStringValue(confirm) ?? string.Empty : string.Empty,
+                TokenCost = parsed.TryGetProperty("tokenCost", out var cost) ? GetIntValue(cost, 1) : 1,
+                Parameters = parsed.TryGetProperty("parameters", out var parameters) ? ParseParameters(parameters) : new Dictionary<string, object>(),
+                ToolInvocations = parsed.TryGetProperty("tools", out var tools) ? ParseTools(tools) : new List<ToolInvocation>(),
+                Artifacts = parsed.TryGetProperty("artifacts", out var artifacts) ? ParseArtifacts(artifacts) : new List<AssistantArtifact>()
+            };
+
+            return result;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to parse structured Groq result");
+            return new AssistantTurnResult
+            {
+                Message = SanitizeRawResponse(responseText),
+                Intent = "chat"
+            };
+        }
+    }
+
+    /// <summary>Safely extract a string from a JsonElement regardless of its value kind.</summary>
+    private static string? GetStringValue(JsonElement element)
+    {
+        return element.ValueKind switch
+        {
+            JsonValueKind.String => element.GetString(),
+            JsonValueKind.Number => element.GetRawText(),
+            JsonValueKind.True => "true",
+            JsonValueKind.False => "false",
+            JsonValueKind.Null => null,
+            _ => element.GetRawText()
+        };
+    }
+
+    /// <summary>Safely extract a bool from a JsonElement — handles string "true"/"false" and numbers.</summary>
+    private static bool GetBoolValue(JsonElement element)
+    {
+        return element.ValueKind switch
+        {
+            JsonValueKind.True => true,
+            JsonValueKind.False => false,
+            JsonValueKind.String => string.Equals(element.GetString(), "true", StringComparison.OrdinalIgnoreCase),
+            JsonValueKind.Number => element.TryGetInt32(out var intVal) && intVal != 0,
+            _ => false
+        };
+    }
+
+    /// <summary>Safely extract an int from a JsonElement — handles string numbers and booleans.</summary>
+    private static int GetIntValue(JsonElement element, int defaultValue)
+    {
+        return element.ValueKind switch
+        {
+            JsonValueKind.Number => element.TryGetInt32(out var intVal) ? intVal : defaultValue,
+            JsonValueKind.String => int.TryParse(element.GetString(), out var parsed) ? parsed : defaultValue,
+            _ => defaultValue
+        };
+    }
+
+    private static AssistantTurnMode ParseMode(string? mode)
+        => (mode ?? string.Empty).ToLowerInvariant() switch
+        {
+            "code" => AssistantTurnMode.Code,
+            "vision" => AssistantTurnMode.Vision,
+            "desktop_action" => AssistantTurnMode.DesktopAction,
+            _ => AssistantTurnMode.Chat
+        };
+
+    private static List<ToolInvocation> ParseTools(JsonElement element)
+    {
+        var tools = new List<ToolInvocation>();
+        if (element.ValueKind != JsonValueKind.Array)
+        {
+            return tools;
+        }
+
+        foreach (var item in element.EnumerateArray())
+        {
+            tools.Add(new ToolInvocation
+            {
+                Name = item.TryGetProperty("name", out var name) ? name.GetString() ?? string.Empty : string.Empty,
+                Summary = item.TryGetProperty("summary", out var summary) ? summary.GetString() ?? string.Empty : string.Empty,
+                Status = item.TryGetProperty("status", out var status) ? ParseToolStatus(status.GetString()) : AssistantToolStatus.Planned,
+                ErrorMessage = item.TryGetProperty("errorMessage", out var error) ? error.GetString() ?? string.Empty : string.Empty
+            });
+        }
+
+        return tools;
+    }
+
+    private static AssistantToolStatus ParseToolStatus(string? status)
+        => (status ?? string.Empty).ToLowerInvariant() switch
+        {
+            "running" => AssistantToolStatus.Running,
+            "completed" => AssistantToolStatus.Completed,
+            "failed" => AssistantToolStatus.Failed,
+            _ => AssistantToolStatus.Planned
+        };
+
+    private static List<AssistantArtifact> ParseArtifacts(JsonElement element)
+    {
+        var artifacts = new List<AssistantArtifact>();
+        if (element.ValueKind != JsonValueKind.Array)
+        {
+            return artifacts;
+        }
+
+        foreach (var item in element.EnumerateArray())
+        {
+            artifacts.Add(new AssistantArtifact
+            {
+                Kind = ParseArtifactKind(item.TryGetProperty("kind", out var kind) ? GetStringValue(kind) : null),
+                Title = item.TryGetProperty("title", out var title) ? GetStringValue(title) ?? string.Empty : string.Empty,
+                Summary = item.TryGetProperty("summary", out var summary) ? GetStringValue(summary) ?? string.Empty : string.Empty,
+                Content = item.TryGetProperty("content", out var content) ? GetStringValue(content) ?? string.Empty : string.Empty,
+                SecondaryContent = item.TryGetProperty("secondaryContent", out var secondary) ? GetStringValue(secondary) ?? string.Empty : string.Empty,
+                Language = item.TryGetProperty("language", out var language) ? GetStringValue(language) ?? "text" : "text",
+                FilePath = item.TryGetProperty("filePath", out var filePath) ? GetStringValue(filePath) ?? string.Empty : string.Empty,
+                IsPreviewOnly = item.TryGetProperty("isPreviewOnly", out var previewOnly) ? GetBoolValue(previewOnly) : true
+            });
+        }
+
+        return artifacts;
+    }
+
+    private static AssistantArtifactKind ParseArtifactKind(string? kind)
+        => (kind ?? string.Empty).ToLowerInvariant() switch
+        {
+            "diff" => AssistantArtifactKind.Diff,
+            "ocr" => AssistantArtifactKind.Ocr,
+            "imageattachment" => AssistantArtifactKind.ImageAttachment,
+            "filelist" => AssistantArtifactKind.FileList,
+            "runnotes" => AssistantArtifactKind.RunNotes,
+            _ => AssistantArtifactKind.CodePreview
+        };
 
     private AIResponse ParseAIResponse(string jsonResponse)
     {
         try
         {
-            // Extract JSON from markdown code blocks if present
-            var jsonText = jsonResponse;
-            if (jsonText.Contains("```json"))
-            {
-                jsonText = jsonText.Split("```json")[1].Split("```")[0];
-            }
-            else if (jsonText.Contains("```"))
-            {
-                var parts = jsonText.Split("```");
-                if (parts.Length >= 2)
-                {
-                    jsonText = parts[1];
-                }
-            }
-
-            jsonText = jsonText.Trim();
-
+            var jsonText = ExtractJson(jsonResponse);
             var parsed = JsonSerializer.Deserialize<JsonElement>(jsonText);
 
             return new AIResponse
             {
                 Success = true,
-                Message = parsed.GetProperty("message").GetString() ?? "",
-                Intent = parsed.GetProperty("intent").GetString() ?? "chat",
+                Message = parsed.TryGetProperty("message", out var msgProp) ? GetStringValue(msgProp) ?? "" : "",
+                Intent = parsed.TryGetProperty("intent", out var intentProp) ? GetStringValue(intentProp) ?? "chat" : "chat",
                 ConfirmationMessage = parsed.TryGetProperty("confirmationMessage", out var confirm)
-                    ? confirm.GetString() ?? ""
+                    ? GetStringValue(confirm) ?? ""
                     : "",
                 RequiresConfirmation = parsed.TryGetProperty("requiresConfirmation", out var req)
-                    && req.GetBoolean(),
-                Parameters = ParseParameters(parsed.GetProperty("parameters")),
+                    && GetBoolValue(req),
+                Parameters = parsed.TryGetProperty("parameters", out var parms)
+                    ? ParseParameters(parms)
+                    : new Dictionary<string, object>(),
                 TokenCost = parsed.TryGetProperty("tokenCost", out var cost)
-                    ? cost.GetInt32()
+                    ? GetIntValue(cost, 1)
                     : 1
             };
         }
         catch (Exception ex)
         {
-            _logger.LogWarning($"Failed to parse as JSON: {ex.Message}");
+            _logger.LogWarning(ex, "Failed to parse Groq JSON response");
             return new AIResponse
             {
                 Success = true,
-                Message = jsonResponse,
+                Message = SanitizeRawResponse(jsonResponse),
                 Intent = "chat",
                 TokenCost = 1
             };
         }
     }
 
+    private static string ExtractJson(string raw)
+    {
+        var jsonText = raw.Trim();
+        if (jsonText.StartsWith("```", StringComparison.Ordinal))
+        {
+            var firstNewline = jsonText.IndexOf('\n');
+            if (firstNewline > 0)
+            {
+                jsonText = jsonText[(firstNewline + 1)..];
+            }
+
+            var lastFence = jsonText.LastIndexOf("```", StringComparison.Ordinal);
+            if (lastFence > 0)
+            {
+                jsonText = jsonText[..lastFence];
+            }
+        }
+
+        jsonText = jsonText.Trim();
+        var firstBrace = jsonText.IndexOf('{');
+        var lastBrace = jsonText.LastIndexOf('}');
+        if (firstBrace >= 0 && lastBrace > firstBrace)
+        {
+            jsonText = jsonText[firstBrace..(lastBrace + 1)];
+        }
+
+        return RepairJsonControlChars(jsonText);
+    }
+
+    private static string RepairJsonControlChars(string json)
+    {
+        var sb = new StringBuilder(json.Length + 200);
+        var inString = false;
+        for (var i = 0; i < json.Length; i++)
+        {
+            var c = json[i];
+            if (c == '"')
+            {
+                var bs = 0;
+                for (var j = i - 1; j >= 0 && json[j] == '\\'; j--)
+                {
+                    bs++;
+                }
+
+                if (bs % 2 == 0)
+                {
+                    inString = !inString;
+                }
+
+                sb.Append(c);
+            }
+            else if (inString)
+            {
+                if (c == '\n') sb.Append("\\n");
+                else if (c == '\r') { }
+                else if (c == '\t') sb.Append("\\t");
+                else sb.Append(c);
+            }
+            else
+            {
+                sb.Append(c);
+            }
+        }
+
+        return sb.ToString();
+    }
+
+    /// <summary>
+    /// Attempts to extract a clean message from a raw AI response that failed JSON parsing.
+    /// Tries to pull the "message" field value, otherwise strips JSON-like syntax for display.
+    /// </summary>
+    private static string SanitizeRawResponse(string raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+            return "I encountered an issue processing the response. Please try again.";
+
+        // Try a best-effort regex extraction of the "message" field
+        var messageMatch = System.Text.RegularExpressions.Regex.Match(
+            raw,
+            "\"message\"\\s*:\\s*\"((?:[^\"\\\\]|\\\\.)*)\"",
+            System.Text.RegularExpressions.RegexOptions.Singleline);
+
+        if (messageMatch.Success && !string.IsNullOrWhiteSpace(messageMatch.Groups[1].Value))
+        {
+            return System.Text.RegularExpressions.Regex.Unescape(messageMatch.Groups[1].Value);
+        }
+
+        // If response looks like JSON structure, give a friendly fallback
+        var trimmed = raw.Trim();
+        if (trimmed.StartsWith("{") || trimmed.StartsWith("[") || trimmed.Contains("\"intent\""))
+        {
+            return "I processed your request but had trouble formatting the response. Please try again.";
+        }
+
+        // Otherwise return the raw text (it's probably plain text)
+        return raw;
+    }
+
     private Dictionary<string, object> ParseParameters(JsonElement parametersElement)
     {
-        var parameters = new Dictionary<string, object>();
+        var parameters = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
         foreach (var property in parametersElement.EnumerateObject())
         {
-            parameters[property.Name] = property.Value.GetString() ?? "";
+            parameters[property.Name] = property.Value.ValueKind switch
+            {
+                JsonValueKind.String => property.Value.GetString() ?? string.Empty,
+                JsonValueKind.Number => property.Value.TryGetInt64(out var intValue) ? intValue : property.Value.GetDouble(),
+                JsonValueKind.True => true,
+                JsonValueKind.False => false,
+                _ => property.Value.GetRawText()
+            };
         }
+
         return parameters;
     }
 
@@ -627,7 +786,7 @@ You are the backbone of a premium productivity app. Users pay for you. Be useful
     private class GroqRequest
     {
         [JsonPropertyName("model")]
-        public string Model { get; set; } = "";
+        public string Model { get; set; } = string.Empty;
 
         [JsonPropertyName("messages")]
         public GroqMessage[] Messages { get; set; } = Array.Empty<GroqMessage>();
@@ -645,13 +804,73 @@ You are the backbone of a premium productivity app. Users pay for you. Be useful
         public bool Stream { get; set; }
     }
 
+    private class GroqStructuredRequest
+    {
+        [JsonPropertyName("model")]
+        public string Model { get; set; } = string.Empty;
+
+        [JsonPropertyName("messages")]
+        public List<GroqStructuredMessage> Messages { get; set; } = new();
+
+        [JsonPropertyName("temperature")]
+        public double Temperature { get; set; }
+
+        [JsonPropertyName("max_tokens")]
+        public int MaxTokens { get; set; }
+
+        [JsonPropertyName("top_p")]
+        public double TopP { get; set; }
+
+        [JsonPropertyName("stream")]
+        public bool Stream { get; set; }
+
+        [JsonPropertyName("response_format")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public GroqResponseFormat? ResponseFormat { get; set; }
+    }
+
+    private class GroqResponseFormat
+    {
+        [JsonPropertyName("type")]
+        public string Type { get; set; } = "json_object";
+    }
+
+    private class GroqStructuredMessage
+    {
+        [JsonPropertyName("role")]
+        public string Role { get; set; } = string.Empty;
+
+        [JsonPropertyName("content")]
+        public object Content { get; set; } = string.Empty;
+    }
+
+    private class GroqContentPart
+    {
+        [JsonPropertyName("type")]
+        public string Type { get; set; } = string.Empty;
+
+        [JsonPropertyName("text")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public string? Text { get; set; }
+
+        [JsonPropertyName("image_url")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public GroqImageUrl? ImageUrl { get; set; }
+    }
+
+    private class GroqImageUrl
+    {
+        [JsonPropertyName("url")]
+        public string Url { get; set; } = string.Empty;
+    }
+
     private class GroqMessage
     {
         [JsonPropertyName("role")]
-        public string Role { get; set; } = "";
+        public string Role { get; set; } = string.Empty;
 
         [JsonPropertyName("content")]
-        public string Content { get; set; } = "";
+        public string Content { get; set; } = string.Empty;
     }
 
     private class GroqResponse
@@ -666,10 +885,19 @@ You are the backbone of a premium productivity app. Users pay for you. Be useful
     private class GroqChoice
     {
         [JsonPropertyName("message")]
-        public GroqMessage Message { get; set; } = new();
+        public GroqChoiceMessage Message { get; set; } = new();
 
         [JsonPropertyName("finish_reason")]
-        public string FinishReason { get; set; } = "";
+        public string FinishReason { get; set; } = string.Empty;
+    }
+
+    private class GroqChoiceMessage
+    {
+        [JsonPropertyName("role")]
+        public string Role { get; set; } = string.Empty;
+
+        [JsonPropertyName("content")]
+        public string Content { get; set; } = string.Empty;
     }
 
     private class GroqUsage
