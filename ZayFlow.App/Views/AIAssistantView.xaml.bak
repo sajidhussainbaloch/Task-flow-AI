@@ -1,0 +1,416 @@
+﻿<UserControl x:Class="ZayFlow.App.Views.AIAssistantView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="clr-namespace:ZayFlow.App.Controls"
+             xmlns:converters="clr-namespace:ZayFlow.App.Converters"
+             AllowDrop="True"
+             PreviewKeyDown="Root_PreviewKeyDown"
+             DragEnter="Root_DragEnter"
+             Drop="Root_Drop">
+
+    <UserControl.Resources>
+        <converters:BoolToVisibilityConverter x:Key="BoolVis"/>
+    </UserControl.Resources>
+
+    <Grid Background="{DynamicResource WindowBackgroundBrush}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <Border Grid.Row="0" Margin="20,18,20,12" Padding="22,18" Style="{StaticResource GlassCard}">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <StackPanel>
+                    <TextBlock Text="ZayFlow Assistant" Style="{StaticResource HeadingLG}"/>
+                    <TextBlock Text="OCR, code previews, clipboard image paste, and safer action previews in one workspace."
+                               Style="{StaticResource BodyText}"
+                               Margin="0,6,0,0"/>
+                </StackPanel>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Border Background="{DynamicResource AccentSubtleBrush}" CornerRadius="999" Padding="10,6" Margin="0,0,10,0">
+                        <TextBlock Text="{Binding TokenTier}" Foreground="{DynamicResource AccentBrush}" FontWeight="SemiBold"/>
+                    </Border>
+                    <ToggleButton Style="{StaticResource ToggleSwitch}" IsChecked="{Binding IsAutoMode}" VerticalAlignment="Center"/>
+                    <TextBlock Text="Auto" Margin="8,0,0,0" VerticalAlignment="Center" Foreground="{DynamicResource SecondaryTextBrush}"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <DockPanel Grid.Row="1" Margin="20,0,20,0" LastChildFill="True">
+            <Border DockPanel.Dock="Right"
+                    Width="390"
+                    Margin="16,0,0,0"
+                    Padding="18"
+                    Style="{StaticResource GlassCard}"
+                    Visibility="{Binding ShowArtifactPane, Converter={StaticResource BoolVis}}">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <Grid Grid.Row="0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock Text="Artifacts" Style="{StaticResource HeadingMD}"/>
+                            <TextBlock Text="Preview generated code, diffs, OCR text, and image artifacts before applying actions."
+                                       Style="{StaticResource CaptionText}"
+                                       Margin="0,4,0,0"/>
+                        </StackPanel>
+                        <Button Grid.Column="1" Style="{StaticResource GhostButton}" Padding="10,6" Content="Hide" Command="{Binding ToggleArtifactPaneCommand}"/>
+                    </Grid>
+
+                    <ListBox Grid.Row="1"
+                             Margin="0,16,0,14"
+                             ItemsSource="{Binding ArtifactPaneItems}"
+                             SelectedItem="{Binding SelectedArtifact, Mode=TwoWay}"
+                             Style="{StaticResource PremiumListBox}"
+                             BorderThickness="0"
+                             Background="Transparent"
+                             MaxHeight="170">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Border Padding="12" Margin="0,0,0,8" Style="{StaticResource PremiumCardHover}">
+                                    <StackPanel>
+                                        <TextBlock Text="{Binding Title}" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryTextBrush}"/>
+                                        <TextBlock Text="{Binding Summary}" Foreground="{DynamicResource SecondaryTextBrush}" TextWrapping="Wrap" Margin="0,4,0,0"/>
+                                        <TextBlock Text="{Binding Kind}" Foreground="{DynamicResource TertiaryTextBrush}" FontSize="11" Margin="0,6,0,0"/>
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+
+                    <Grid Grid.Row="2">
+                        <Grid.Style>
+                            <Style TargetType="Grid">
+                                <Setter Property="Visibility" Value="Visible"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding SelectedArtifact}" Value="{x:Null}">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Grid.Style>
+                        <Border Style="{StaticResource PremiumCard}" Padding="14">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="*"/>
+                                </Grid.RowDefinitions>
+                                <StackPanel Grid.Row="0">
+                                    <TextBlock Text="{Binding SelectedArtifact.Title}" Style="{StaticResource HeadingSM}"/>
+                                    <TextBlock Text="{Binding SelectedArtifact.Summary}" Style="{StaticResource CaptionText}" Margin="0,4,0,0" TextWrapping="Wrap"/>
+                                    <TextBlock Text="{Binding SelectedArtifact.FilePath}" Style="{StaticResource CaptionText}" Margin="0,4,0,0" TextWrapping="Wrap"/>
+                                </StackPanel>
+                                <TextBlock Grid.Row="1" Margin="0,10,0,10" Text="{Binding SelectedArtifact.Kind, StringFormat=Kind: {0}}" Foreground="{DynamicResource TertiaryTextBrush}"/>
+                                <Grid Grid.Row="2">
+                                    <Image Stretch="Uniform" Source="{Binding SelectedArtifact.Content}" Visibility="Collapsed">
+                                        <Image.Style>
+                                            <Style TargetType="Image">
+                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding SelectedArtifact.IsImageArtifact}" Value="True">
+                                                        <Setter Property="Visibility" Value="Visible"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Image.Style>
+                                    </Image>
+                                    <controls:CodeArtifactViewer CodeText="{Binding SelectedArtifact.Content}" Language="{Binding SelectedArtifact.Language}">
+                                        <controls:CodeArtifactViewer.Style>
+                                            <Style TargetType="controls:CodeArtifactViewer">
+                                                <Setter Property="Visibility" Value="Visible"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding SelectedArtifact.IsImageArtifact}" Value="True">
+                                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </controls:CodeArtifactViewer.Style>
+                                    </controls:CodeArtifactViewer>
+                                </Grid>
+                            </Grid>
+                        </Border>
+                    </Grid>
+                </Grid>
+            </Border>
+
+            <ScrollViewer x:Name="ChatScrollViewer" Style="{StaticResource PremiumScrollViewer}" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <StackPanel Margin="0,0,0,20">
+                    <Border Padding="28,24" Margin="0,0,0,14" Style="{StaticResource GlassCard}" Visibility="{Binding ShowWelcome, Converter={StaticResource BoolVis}}">
+                        <StackPanel>
+                            <TextBlock Text="{Binding UserGreeting}" Style="{StaticResource HeadingLG}"/>
+                            <TextBlock Text="Use a workspace root for code-aware edits, paste screenshots for OCR, or ask for a diff before file changes."
+                                       Style="{StaticResource BodyText}"
+                                       Margin="0,8,0,0"
+                                       TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Margin="0,0,0,14" Padding="20" Style="{StaticResource GlassCard}" Visibility="{Binding ShowActionCards, Converter={StaticResource BoolVis}}">
+                        <StackPanel>
+                            <TextBlock Text="Quick Start" Style="{StaticResource HeadingSM}"/>
+                            <WrapPanel Margin="0,12,0,0">
+                                <Button Style="{StaticResource SecondaryButton}" Margin="0,0,10,10" Padding="14,8" Content="Review a code file" Command="{Binding ActionCardCommand}" CommandParameter="Review this file and suggest improvements"/>
+                                <Button Style="{StaticResource SecondaryButton}" Margin="0,0,10,10" Padding="14,8" Content="Explain screenshot" Command="{Binding ActionCardCommand}" CommandParameter="Explain the screenshot and extract the text"/>
+                                <Button Style="{StaticResource SecondaryButton}" Margin="0,0,10,10" Padding="14,8" Content="Create WPF view" Command="{Binding ActionCardCommand}" CommandParameter="Create a modern WPF view with a glass style"/>
+                                <Button Style="{StaticResource GhostButton}" Margin="0,0,0,10" Padding="14,8" Content="Dismiss" Command="{Binding DismissActionCardsCommand}"/>
+                            </WrapPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <ItemsControl ItemsSource="{Binding QuickCommands}" Visibility="{Binding ShowQuickSuggestions, Converter={StaticResource BoolVis}}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <WrapPanel/>
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Button Content="{Binding}" Margin="0,0,10,10" Padding="14,8" Style="{StaticResource SecondaryButton}" Command="{Binding DataContext.ApplyQuickCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding}"/>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <ItemsControl ItemsSource="{Binding Messages}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border Margin="0,0,0,14" Padding="18,16" MaxWidth="860" HorizontalAlignment="Left">
+                                    <Border.Style>
+                                        <Style TargetType="Border">
+                                            <Setter Property="Background" Value="{DynamicResource CardBackgroundBrush}"/>
+                                            <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}"/>
+                                            <Setter Property="BorderThickness" Value="1"/>
+                                            <Setter Property="CornerRadius" Value="16"/>
+                                            <Setter Property="HorizontalAlignment" Value="Left"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsUser}" Value="True">
+                                                    <Setter Property="Background" Value="{DynamicResource AccentBrush}"/>
+                                                    <Setter Property="BorderBrush" Value="{DynamicResource AccentHoverBrush}"/>
+                                                    <Setter Property="HorizontalAlignment" Value="Right"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Border.Style>
+                                    <StackPanel>
+                                        <DockPanel Margin="0,0,0,8">
+                                            <TextBlock Text="{Binding MessageKind}" FontWeight="SemiBold">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Foreground" Value="{DynamicResource SecondaryTextBrush}"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsUser}" Value="True">
+                                                                <Setter Property="Foreground" Value="White"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                            <TextBlock Text="{Binding TimeText}" DockPanel.Dock="Right">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Foreground" Value="{DynamicResource TertiaryTextBrush}"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsUser}" Value="True">
+                                                                <Setter Property="Foreground" Value="#DCE7FF"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                        </DockPanel>
+
+                                        <TextBlock Text="{Binding Content}" TextWrapping="Wrap" LineHeight="22">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Foreground" Value="{DynamicResource PrimaryTextBrush}"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsUser}" Value="True">
+                                                            <Setter Property="Foreground" Value="White"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+
+                                        <ItemsControl ItemsSource="{Binding Attachments}" Margin="0,12,0,0">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Border Margin="0,0,0,8" Padding="10,8" Background="{DynamicResource SurfaceBrush}" CornerRadius="10">
+                                                        <StackPanel>
+                                                            <TextBlock Text="{Binding Title}" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryTextBrush}"/>
+                                                            <TextBlock Text="{Binding PreviewText}" Foreground="{DynamicResource SecondaryTextBrush}" Margin="0,2,0,0"/>
+                                                            <TextBlock Text="{Binding OcrText}" Foreground="{DynamicResource TertiaryTextBrush}" TextWrapping="Wrap" MaxHeight="56"/>
+                                                        </StackPanel>
+                                                    </Border>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+
+                                        <TextBlock Text="{Binding ToolTraceSummary}" Margin="0,10,0,0" Foreground="{DynamicResource AccentBrush}" TextWrapping="Wrap">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                    <Style.Triggers>
+                                                        <Trigger Property="Text" Value="">
+                                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                                        </Trigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+
+                                        <ItemsControl ItemsSource="{Binding ToolInvocations}" Margin="0,10,0,0">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Border Margin="0,0,0,6" Padding="10,8" Background="{DynamicResource AccentSubtleBrush}" CornerRadius="10">
+                                                        <DockPanel>
+                                                            <TextBlock Text="{Binding Name}" FontWeight="SemiBold" Foreground="{DynamicResource AccentBrush}"/>
+                                                            <TextBlock Text="{Binding Status}" DockPanel.Dock="Right" Foreground="{DynamicResource SecondaryTextBrush}"/>
+                                                        </DockPanel>
+                                                    </Border>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+
+                                        <ItemsControl ItemsSource="{Binding Artifacts}" Margin="0,10,0,0">
+                                            <ItemsControl.ItemsPanel>
+                                                <ItemsPanelTemplate>
+                                                    <WrapPanel/>
+                                                </ItemsPanelTemplate>
+                                            </ItemsControl.ItemsPanel>
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Button Margin="0,0,8,8" Padding="12,8" Style="{StaticResource SecondaryButton}" Command="{Binding DataContext.SelectArtifactCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding}">
+                                                        <StackPanel>
+                                                            <TextBlock Text="{Binding Title}" FontWeight="SemiBold"/>
+                                                            <TextBlock Text="{Binding Kind}" FontSize="11" Foreground="{DynamicResource TertiaryTextBrush}"/>
+                                                        </StackPanel>
+                                                    </Button>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <Border Padding="18,14" Style="{StaticResource PremiumCard}" Visibility="{Binding IsTyping, Converter={StaticResource BoolVis}}">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="Processing" Style="{StaticResource HeadingSM}" Margin="0,0,12,0"/>
+                            <ProgressBar Width="140" Height="8" IsIndeterminate="True" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
+        </DockPanel>
+
+        <Border Grid.Row="2" Margin="20,14,20,20" Padding="18" Style="{StaticResource GlassCard}">
+            <StackPanel>
+                <Border Visibility="{Binding ShowingConfirmation, Converter={StaticResource BoolVis}}"
+                        Background="{DynamicResource CardBackgroundBrush}"
+                        BorderBrush="{DynamicResource WarningBrush}"
+                        BorderThickness="1"
+                        CornerRadius="14"
+                        Padding="16"
+                        Margin="0,0,0,14">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        <TextBlock Text="Preview before action" Style="{StaticResource HeadingSM}" Foreground="{DynamicResource WarningBrush}"/>
+                        <ScrollViewer Grid.Row="1" Margin="0,10,0,12" MaxHeight="180">
+                            <TextBlock Text="{Binding ConfirmationMessage}" TextWrapping="Wrap" FontFamily="{StaticResource MonoFont}" LineHeight="20"/>
+                        </ScrollViewer>
+                        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right">
+                            <Button Style="{StaticResource SecondaryButton}" Content="Cancel" Margin="0,0,8,0" Command="{Binding CancelCommand}"/>
+                            <Button Style="{StaticResource PrimaryButton}" Content="Confirm" Command="{Binding ExecuteCommand}"/>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
+                <ItemsControl ItemsSource="{Binding PendingAttachments}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <WrapPanel/>
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Border Margin="0,0,10,10" Padding="12,8" Background="{DynamicResource SurfaceBrush}" CornerRadius="12">
+                                <DockPanel>
+                                    <StackPanel>
+                                        <TextBlock Text="{Binding Title}" FontWeight="SemiBold"/>
+                                        <TextBlock Text="{Binding PreviewText}" Style="{StaticResource CaptionText}"/>
+                                    </StackPanel>
+                                    <Button DockPanel.Dock="Right" Margin="10,0,0,0" Padding="8,4" Style="{StaticResource GhostButton}" Content="Remove" Command="{Binding DataContext.RemovePendingAttachmentCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding}"/>
+                                </DockPanel>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <Grid Margin="0,0,0,12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBox Grid.Column="0" Style="{StaticResource PremiumTextBox}" Text="{Binding WorkspaceRoot, UpdateSourceTrigger=PropertyChanged}" ToolTip="Optional workspace root for code-aware prompts" Margin="0,0,10,0"/>
+                    <Button Grid.Column="1" Style="{StaticResource SecondaryButton}" Content="Artifacts" Command="{Binding ToggleArtifactPaneCommand}"/>
+                </Grid>
+
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBox x:Name="InputBox"
+                             Grid.Column="0"
+                             Style="{StaticResource PremiumTextBox}"
+                             Text="{Binding InputText, UpdateSourceTrigger=PropertyChanged}"
+                             AcceptsReturn="True"
+                             TextWrapping="Wrap"
+                             MinHeight="74"
+                             MaxHeight="160"
+                             VerticalScrollBarVisibility="Auto"
+                             KeyDown="InputBox_KeyDown"
+                             IsEnabled="{Binding IsInputEnabled}"/>
+                    <Button Grid.Column="1" Margin="10,0,0,0" Style="{StaticResource SecondaryButton}" Content="Paste Image" Command="{Binding PasteImageCommand}"/>
+                    <Button Grid.Column="2" Margin="10,0,0,0" Style="{StaticResource GhostButton}" Content="Clear" Command="{Binding ClearChatCommand}"/>
+                    <Button Grid.Column="3" Margin="10,0,0,0" Style="{StaticResource PrimaryButton}" Content="Send" Command="{Binding SendCommand}"/>
+                </Grid>
+
+                <DockPanel Margin="0,12,0,0">
+                    <TextBlock Text="{Binding UpgradeMessage}" Foreground="{DynamicResource WarningBrush}" Visibility="{Binding ShowUpgradeMessage, Converter={StaticResource BoolVis}}"/>
+                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                        <TextBlock Text="{Binding EstimatedTokens, StringFormat=Approx. {0} tokens}" Style="{StaticResource CaptionText}" Margin="0,0,16,0"/>
+                        <TextBlock Style="{StaticResource CaptionText}">
+                            <TextBlock.Text>
+                                <MultiBinding StringFormat="{}{0}/{1} used today">
+                                    <Binding Path="UsedTokens"/>
+                                    <Binding Path="DailyTokenLimit"/>
+                                </MultiBinding>
+                            </TextBlock.Text>
+                        </TextBlock>
+                    </StackPanel>
+                </DockPanel>
+            </StackPanel>
+        </Border>
+    </Grid>
+</UserControl>

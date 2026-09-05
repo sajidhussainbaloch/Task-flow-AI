@@ -94,3 +94,41 @@ public class GreaterThanZeroConverter : IValueConverter
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
         => throw new NotImplementedException();
 }
+
+/// <summary>
+/// Returns true when value >= 0 (used to show determinate progress bar).
+/// </summary>
+public class NonNegativeConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        if (value is int i) return i >= 0;
+        if (value is double d) return d >= 0;
+        return false;
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        => throw new NotImplementedException();
+}
+
+/// <summary>
+/// MultiValueConverter: takes [percent (double 0-100), containerWidth (double)] → pixel width for progress fill.
+/// </summary>
+public class ProgressWidthConverter : IMultiValueConverter
+{
+    public object Convert(object[] values, Type targetType, object parameter, CultureInfo culture)
+    {
+        if (values.Length >= 2
+            && values[0] is double percent
+            && values[1] is double containerWidth
+            && containerWidth > 0
+            && percent >= 0)
+        {
+            return Math.Max(2, containerWidth * Math.Min(percent, 100) / 100.0);
+        }
+        return 0.0;
+    }
+
+    public object[] ConvertBack(object value, Type[] targetTypes, object parameter, CultureInfo culture)
+        => throw new NotImplementedException();
+}

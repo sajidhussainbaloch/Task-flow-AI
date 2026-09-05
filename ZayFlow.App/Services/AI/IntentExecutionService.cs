@@ -1059,7 +1059,9 @@ public class IntentExecutionService
 
     private Task<ActionResult> ExecuteFolderInsightsAsync(Dictionary<string, object> parameters, CancellationToken ct)
     {
-        if (!parameters.TryGetValue("folderPath", out var folderPath))
+        if (!parameters.TryGetValue("folderPath", out var folderPath)
+            && !parameters.TryGetValue("path", out folderPath)
+            && !parameters.TryGetValue("folder", out folderPath))
             return Task.FromResult(new ActionResult { Success = false, Message = "Missing parameter: folderPath" });
 
         var rawPath = folderPath?.ToString() ?? string.Empty;
